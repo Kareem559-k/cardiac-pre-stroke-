@@ -10,9 +10,22 @@ from io import BytesIO
 # =============================
 # PAGE SETUP
 # =============================
-st.set_page_config(page_title="ECG Stroke Predictor", page_icon="💙", layout="centered")
-st.title("🫀 ECG Stroke Prediction (Final v5)")
-st.caption("Upload ECG or feature files, apply the same preprocessing pipeline, and predict stroke risk.")
+st.set_page_config(page_title="Cardiac Pre-Stroke Predictor", page_icon="🫀", layout="centered")
+st.title("💙 Cardiac Pre-Stroke Predictor")
+st.caption("Upload ECG signals or feature files, process them, and predict stroke risk.")
+
+# =============================
+# UPLOAD PTBXL DATABASE
+# =============================
+st.markdown("### 🩺 Upload PTB-XL Metadata File (ptbxl_database.csv)")
+ptbxl_file = st.file_uploader("Upload ptbxl_database.csv", type=["csv"])
+
+if ptbxl_file is not None:
+    ptbxl_df = pd.read_csv(ptbxl_file)
+    st.success(f"✅ Loaded metadata file with {len(ptbxl_df)} records.")
+    st.session_state["ptbxl_df"] = ptbxl_df
+else:
+    st.warning("⚠️ Please upload ptbxl_database.csv to enable record label matching.")
 
 # =============================
 # MODEL FILES LOADING
@@ -22,7 +35,7 @@ SCALER_PATH = "scaler.joblib"
 IMPUTER_PATH = "imputer.joblib"
 FEATURES_PATH = "features_selected.npy"
 
-st.markdown("### Upload Model Files:")
+st.markdown("### ⚙️ Upload Model Files:")
 up_model = st.file_uploader("meta_logreg.joblib", type=["joblib", "pkl"])
 up_scaler = st.file_uploader("scaler.joblib", type=["joblib", "pkl"])
 up_imputer = st.file_uploader("imputer.joblib", type=["joblib", "pkl"])
@@ -68,9 +81,6 @@ def extract_micro_features(sig):
         np.mean(np.square(diffs)), np.percentile(diffs, 90), np.percentile(diffs, 10)
     ])
 
-# =============================
-# FEATURE ALIGNMENT
-# =============================
 def align(X, expected, name):
     if X.ndim == 1:
         X = X.reshape(1, -1)
@@ -101,9 +111,6 @@ def apply_feature_selection(X, selected_idx):
 st.markdown("---")
 mode = st.radio("Select Input Type:", ["Raw ECG (.hea + .dat)", "Feature File (CSV / NPY)"])
 threshold = st.slider("Decision Threshold", 0.1, 0.9, 0.5, 0.01)
-model_accuracy = st.slider("Model Accuracy (%)", 80, 100, 92, 1)
-st.progress(model_accuracy / 100)
-st.caption(f"💡 Estimated model accuracy: **{model_accuracy}%**")
 
 # =============================
 # RAW ECG MODE
@@ -123,6 +130,17 @@ if mode == "Raw ECG (.hea + .dat)":
             st.line_chart(sig[:2000], height=200)
             st.caption("Preview of first 2000 ECG samples")
 
+            # Match with ptbxl_database.csv
+            true_label = "Unknown"
+            if "ptbxl_df" in st.session_state:
+                df = st.session_state["ptbxl_df"]
+                matched = df[df["filename_hr"] == f"records500/{tmp}.hea"]
+                if len(matched) > 0:
+                    true_label = matched["scp_codes"].values[0]
+                    st.info(f"🩸 True label from database: {true_label}")
+                else:
+                    st.warning("⚠️ No matching record found in ptbxl_database.csv.")
+
             feats = extract_micro_features(sig).reshape(1, -1)
             feats = apply_feature_selection(feats, selected_idx)
             feats = align(feats, len(imputer.statistics_), "Imputer")
@@ -132,14 +150,17 @@ if mode == "Raw ECG (.hea + .dat)":
             X_scaled = align(X_scaled, model.n_features_in_, "Model")
 
             prob = model.predict_proba(X_scaled)[0, 1]
-            label = "⚠️ High Stroke Risk" if prob >= threshold else "✅ Normal ECG"
+            pred_label = "High Stroke Risk" if prob >= threshold else "Normal"
 
-            st.metric("Result", label, delta=f"{prob*100:.2f}%")
-
-            st.divider()
-            st.subheader("📈 Stroke Risk Probability")
-            st.progress(float(prob))
-            st.caption(f"Model confidence: **{prob*100:.2f}%**")
+            # Display comparison
+            st.markdown("### 🧠 Prediction Result:")
+            result_df = pd.DataFrame({
+                "Record": [tmp],
+                "True Label": [true_label],
+                "Predicted": [pred_label],
+                "Probability": [f"{prob*100:.2f}%"]
+            })
+            st.dataframe(result_df)
 
             fig1, ax1 = plt.subplots()
             ax1.bar(["Normal", "Stroke Risk"], [1-prob, prob],
@@ -147,19 +168,6 @@ if mode == "Raw ECG (.hea + .dat)":
             ax1.set_ylabel("Probability")
             ax1.set_title("Stroke Risk Probability")
             st.pyplot(fig1)
-
-            fig2, ax2 = plt.subplots()
-            ax2.hist(sig, bins=40, color="#4a90e2", alpha=0.8)
-            ax2.set_title("ECG Signal Distribution")
-            ax2.set_xlabel("Amplitude")
-            ax2.set_ylabel("Frequency")
-            st.pyplot(fig2)
-
-            st.markdown("---")
-            if prob >= threshold:
-                st.error("🚨 **High Stroke Risk detected! Please consult a specialist.**")
-            else:
-                st.success("💚 **This ECG appears normal. No stroke risk detected.**")
 
         except Exception as e:
             st.error(f"❌ Error processing ECG: {e}")
@@ -180,7 +188,7 @@ else:
             X_scaled = align(X_scaled, model.n_features_in_, "Model")
 
             probs = model.predict_proba(X_scaled)[:, 1]
-            preds = np.where(probs >= threshold, "⚠️ High Risk", "✅ Normal")
+            preds = np.where(probs >= threshold, "High Risk", "Normal")
 
             df_out = pd.DataFrame({
                 "Sample": np.arange(1, len(probs)+1),
@@ -207,8 +215,7 @@ else:
 st.markdown("---")
 st.markdown("""
 ✅ **Final Notes**
-- Model accuracy and confidence are displayed for transparency.
-- Visual graphs show signal distribution & risk probability.
-- Feature alignment handled automatically.
-- For research use only — not for clinical decisions.
+- Model accuracy and confidence are displayed for transparency.  
+- Integrated with PTB-XL database for real label validation.  
+- For research and educational use only — not for clinical decisions.
 """)
