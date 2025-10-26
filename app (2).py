@@ -12,7 +12,7 @@ from io import BytesIO
 # =============================
 st.set_page_config(page_title="Cardiac Pre-Stroke Predictor", page_icon="🫀", layout="centered")
 st.title("💙 Cardiac Pre-Stroke Predictor")
-st.caption("Upload ECG signals or feature files, process them, and predict stroke risk.")
+st.caption("Upload ECG signals or feature files, process them, and predict stroke risk using AI.")
 
 # =============================
 # UPLOAD PTB-XL DATABASE
@@ -22,10 +22,10 @@ ptbxl_file = st.file_uploader("Upload ptbxl_database.csv", type=["csv"])
 
 if ptbxl_file is not None:
     ptbxl_df = pd.read_csv(ptbxl_file)
-    st.success(f"✅ Loaded metadata file with {len(ptbxl_df)} records.")
+    st.success(f"✅ Metadata loaded successfully with {len(ptbxl_df)} records.")
     st.session_state["ptbxl_df"] = ptbxl_df
 else:
-    st.warning("⚠️ Please upload ptbxl_database.csv to enable record label matching.")
+    st.warning("⚠️ Please upload ptbxl_database.csv to enable label matching.")
 
 # =============================
 # MODEL FILES
@@ -46,7 +46,7 @@ if st.button("💾 Save Uploaded Files"):
     if up_scaler: open(SCALER_PATH, "wb").write(up_scaler.read())
     if up_imputer: open(IMPUTER_PATH, "wb").write(up_imputer.read())
     if up_feats: open(FEATURES_PATH, "wb").write(up_feats.read())
-    st.success("✅ Uploaded files saved successfully. Click 'Rerun' to reload them.")
+    st.success("✅ All files saved successfully. Please rerun the app to reload them.")
 
 def load_artifacts():
     model = joblib.load(MODEL_PATH)
@@ -55,7 +55,7 @@ def load_artifacts():
     selected_idx = None
     if os.path.exists(FEATURES_PATH):
         selected_idx = np.load(FEATURES_PATH)
-        st.info(f"✅ Loaded feature selection index ({len(selected_idx)} features).")
+        st.info(f"✅ Feature selection index loaded ({len(selected_idx)} features).")
     else:
         st.warning("⚠️ features_selected.npy not found — using all features.")
     return model, scaler, imputer, selected_idx
@@ -64,7 +64,7 @@ try:
     model, scaler, imputer, selected_idx = load_artifacts()
 except Exception as e:
     st.stop()
-    st.error(f"❌ Failed to load model: {e}")
+    st.error(f"❌ Failed to load model or preprocessing files: {e}")
 
 # =============================
 # FEATURE EXTRACTION
@@ -89,7 +89,7 @@ def align(X, expected, name):
     if X.shape[1] < expected:
         add = expected - X.shape[1]
         X = np.hstack([X, np.zeros((X.shape[0], add))])
-        st.info(f"Added {add} placeholders for {name}.")
+        st.info(f"Added {add} placeholder columns for {name}.")
     elif X.shape[1] > expected:
         cut = X.shape[1] - expected
         X = X[:, :expected]
@@ -102,7 +102,7 @@ def apply_feature_selection(X, selected_idx):
             X = X[:, selected_idx]
             st.success(f"✅ Applied feature selection ({len(selected_idx)} features).")
         else:
-            st.warning("⚠️ Not enough features for selection, skipping.")
+            st.warning("⚠️ Feature selection skipped (not enough features).")
     return X
 
 # =============================
@@ -128,7 +128,7 @@ if mode == "Raw ECG (.hea + .dat)":
             rec = rdrecord(tmp)
             sig = rec.p_signal[:, 0]
             st.line_chart(sig[:2000], height=200)
-            st.caption("Preview of first 2000 ECG samples")
+            st.caption("Preview: First 2000 ECG samples")
 
             # ====== MATCH WITH PTBXL DATABASE ======
             true_label = "Unknown"
@@ -147,7 +147,7 @@ if mode == "Raw ECG (.hea + .dat)":
                 else:
                     st.warning("⚠️ No matching record found in ptbxl_database.csv.")
 
-            # ====== FEATURE EXTRACTION AND MODEL PREDICTION ======
+            # ====== FEATURE EXTRACTION AND PREDICTION ======
             feats = extract_micro_features(sig).reshape(1, -1)
             feats = apply_feature_selection(feats, selected_idx)
             feats = align(feats, len(imputer.statistics_), "Imputer")
@@ -157,16 +157,9 @@ if mode == "Raw ECG (.hea + .dat)":
             X_scaled = align(X_scaled, model.n_features_in_, "Model")
 
             prob = model.predict_proba(X_scaled)[0, 1]
-
-            # Smart threshold tuning
-            if prob < threshold and prob > 0.45:
-                threshold = 0.45
-            elif prob < 0.45 and prob > 0.3:
-                threshold = 0.35
-
             pred_label = "Patient" if prob >= threshold else "Not Patient"
 
-            # ====== RESULT DISPLAY ======
+            # ====== DISPLAY RESULT ======
             st.markdown("### 🧠 Prediction Result:")
             result_df = pd.DataFrame({
                 "Record": [tmp],
@@ -176,36 +169,36 @@ if mode == "Raw ECG (.hea + .dat)":
             })
             st.dataframe(result_df)
 
-            # ====== COLOR FEEDBACK ======
+            # ====== FEEDBACK CARD ======
             if pred_label == "Patient":
                 st.markdown(
-                    "<div style='background-color:#ffcccc; padding:15px; border-radius:10px; text-align:center; font-size:18px;'>🚨 <b>Warning:</b> The patient is likely at high stroke risk!</div>",
+                    "<div style='background-color:#ffcccc; padding:15px; border-radius:10px; text-align:center; font-size:18px;'>🚨 <b>Warning:</b> The patient is likely suffering from a cardiac abnormality.</div>",
                     unsafe_allow_html=True,
                 )
             else:
                 st.markdown(
-                    "<div style='background-color:#ccffcc; padding:15px; border-radius:10px; text-align:center; font-size:18px;'>💚 <b>Good News:</b> The patient shows no critical risk.</div>",
+                    "<div style='background-color:#ccffcc; padding:15px; border-radius:10px; text-align:center; font-size:18px;'>💚 <b>Good News:</b> The patient shows no critical signs of cardiac abnormality.</div>",
                     unsafe_allow_html=True,
                 )
 
-            # ====== PREDICTION CHECK ======
+            # ====== LABEL CONSISTENCY CHECK ======
             if "NORM" not in str(true_label).upper() and pred_label == "Not Patient":
-                st.warning("⚠️ Model predicted (Not Patient) but database shows abnormal condition.")
+                st.warning("⚠️ Model predicted (Not Patient) but the database label suggests an abnormal ECG.")
             elif "NORM" in str(true_label).upper() and pred_label == "Patient":
-                st.warning("⚠️ Model predicted (Patient) but database shows normal ECG.")
+                st.warning("⚠️ Model predicted (Patient) but the database label suggests a normal ECG.")
             else:
-                st.success("✅ Model prediction matches database label!")
+                st.success("✅ Model prediction matches the database label!")
 
             # ====== PLOT PROBABILITY ======
             fig1, ax1 = plt.subplots()
             ax1.bar(["Not Patient", "Patient"], [1 - prob, prob],
                     color=["#6cc070", "#ff6b6b"])
             ax1.set_ylabel("Probability")
-            ax1.set_title("Stroke Risk Probability")
+            ax1.set_title("Predicted Stroke Risk Probability")
             st.pyplot(fig1)
 
         except Exception as e:
-            st.error(f"❌ Error processing ECG: {e}")
+            st.error(f"❌ Error processing ECG record: {e}")
 
 # =============================
 # FOOTER
@@ -213,7 +206,7 @@ if mode == "Raw ECG (.hea + .dat)":
 st.markdown("---")
 st.markdown("""
 ✅ **Notes:**
-- The app integrates PTB-XL metadata to identify real ECG labels.  
-- It provides dynamic probability analysis and adjusts the risk threshold automatically.  
-- The interface is designed for early cardiac pre-stroke prediction research — not for medical diagnosis.
+- Integrated with PTB-XL metadata for real ECG label validation.  
+- Automatically aligns and scales input features.  
+- Designed for **research and educational purposes only** — not for clinical diagnosis.
 """)
