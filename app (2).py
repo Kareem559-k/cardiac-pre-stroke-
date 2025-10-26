@@ -6,6 +6,7 @@ from scipy.stats import skew, kurtosis
 from wfdb import rdrecord
 import matplotlib.pyplot as plt
 from io import BytesIO
+import ast
 
 # =============================
 # PAGE SETUP
@@ -130,17 +131,32 @@ if mode == "Raw ECG (.hea + .dat)":
             st.line_chart(sig[:2000], height=200)
             st.caption("Preview of first 2000 ECG samples")
 
-            # Match with ptbxl_database.csv
+            # ✅ Match with ptbxl_database.csv
             true_label = "Unknown"
+            scp_codes_dict = {}
+
             if "ptbxl_df" in st.session_state:
                 df = st.session_state["ptbxl_df"]
-                matched = df[df["filename_hr"] == f"records500/{tmp}.hea"]
+                # Match by partial name inside filename_hr or filename_lr
+                matched = df[(df["filename_hr"].str.contains(tmp)) | (df["filename_lr"].str.contains(tmp))]
+
                 if len(matched) > 0:
-                    true_label = matched["scp_codes"].values[0]
-                    st.info(f"🩸 True label from database: {true_label}")
+                    scp_str = matched.iloc[0]["scp_codes"]
+                    try:
+                        scp_codes_dict = ast.literal_eval(scp_str)
+                    except:
+                        scp_codes_dict = {"ParseError": scp_str}
+
+                    # classify based on scp_codes
+                    if "NORM" in scp_codes_dict and len(scp_codes_dict) == 1:
+                        true_label = "Normal"
+                    else:
+                        true_label = "Abnormal"
+                    st.info(f"🩸 True label from database: {scp_codes_dict}")
                 else:
                     st.warning("⚠️ No matching record found in ptbxl_database.csv.")
 
+            # ✅ Prediction pipeline
             feats = extract_micro_features(sig).reshape(1, -1)
             feats = apply_feature_selection(feats, selected_idx)
             feats = align(feats, len(imputer.statistics_), "Imputer")
@@ -152,7 +168,7 @@ if mode == "Raw ECG (.hea + .dat)":
             prob = model.predict_proba(X_scaled)[0, 1]
             pred_label = "High Stroke Risk" if prob >= threshold else "Normal"
 
-            # Display comparison
+            # ✅ Display comparison
             st.markdown("### 🧠 Prediction Result:")
             result_df = pd.DataFrame({
                 "Record": [tmp],
@@ -215,7 +231,7 @@ else:
 st.markdown("---")
 st.markdown("""
 ✅ **Final Notes**
-- Model accuracy and confidence are displayed for transparency.  
-- Integrated with PTB-XL database for real label validation.  
-- For research and educational use only — not for clinical decisions.
+- Integrated with PTB-XL for true label extraction.  
+- Shows both actual diagnosis and model prediction.  
+- Use for research purposes only — not clinical use.  
 """)
