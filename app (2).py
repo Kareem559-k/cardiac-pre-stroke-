@@ -1,22 +1,21 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import joblib, os
+import joblib, os, ast
 from scipy.stats import skew, kurtosis
 from wfdb import rdrecord
 import matplotlib.pyplot as plt
 from io import BytesIO
-import ast
 
 # =============================
-# PAGE SETUP
+# PAGE CONFIGURATION
 # =============================
 st.set_page_config(page_title="Cardiac Pre-Stroke Predictor", page_icon="🫀", layout="centered")
 st.title("💙 Cardiac Pre-Stroke Predictor")
 st.caption("Upload ECG signals or feature files, process them, and predict stroke risk.")
 
 # =============================
-# UPLOAD PTBXL DATABASE
+# UPLOAD PTB-XL DATABASE
 # =============================
 st.markdown("### 🩺 Upload PTB-XL Metadata File (ptbxl_database.csv)")
 ptbxl_file = st.file_uploader("Upload ptbxl_database.csv", type=["csv"])
@@ -29,7 +28,7 @@ else:
     st.warning("⚠️ Please upload ptbxl_database.csv to enable record label matching.")
 
 # =============================
-# MODEL FILES LOADING
+# MODEL FILES
 # =============================
 MODEL_PATH = "meta_logreg.joblib"
 SCALER_PATH = "scaler.joblib"
@@ -131,32 +130,24 @@ if mode == "Raw ECG (.hea + .dat)":
             st.line_chart(sig[:2000], height=200)
             st.caption("Preview of first 2000 ECG samples")
 
-            # ✅ Match with ptbxl_database.csv
+            # ====== MATCH WITH PTBXL DATABASE ======
             true_label = "Unknown"
-            scp_codes_dict = {}
-
             if "ptbxl_df" in st.session_state:
                 df = st.session_state["ptbxl_df"]
-                # Match by partial name inside filename_hr or filename_lr
-                matched = df[(df["filename_hr"].str.contains(tmp)) | (df["filename_lr"].str.contains(tmp))]
-
+                matched = df[df["filename_hr"].str.contains(tmp, na=False)]
                 if len(matched) > 0:
-                    scp_str = matched.iloc[0]["scp_codes"]
+                    raw_code = matched["scp_codes"].values[0]
                     try:
-                        scp_codes_dict = ast.literal_eval(scp_str)
-                    except:
-                        scp_codes_dict = {"ParseError": scp_str}
-
-                    # classify based on scp_codes
-                    if "NORM" in scp_codes_dict and len(scp_codes_dict) == 1:
-                        true_label = "Normal"
-                    else:
-                        true_label = "Abnormal"
-                    st.info(f"🩸 True label from database: {scp_codes_dict}")
+                        code_dict = ast.literal_eval(raw_code) if isinstance(raw_code, str) else raw_code
+                        main_label = list(code_dict.keys())[0] if len(code_dict) > 0 else "Unknown"
+                        true_label = main_label
+                        st.info(f"🩸 True label from database: {true_label}")
+                    except Exception:
+                        st.info(f"🩸 Raw code text: {raw_code}")
                 else:
                     st.warning("⚠️ No matching record found in ptbxl_database.csv.")
 
-            # ✅ Prediction pipeline
+            # ====== FEATURE EXTRACTION AND MODEL PREDICTION ======
             feats = extract_micro_features(sig).reshape(1, -1)
             feats = apply_feature_selection(feats, selected_idx)
             feats = align(feats, len(imputer.statistics_), "Imputer")
@@ -166,9 +157,16 @@ if mode == "Raw ECG (.hea + .dat)":
             X_scaled = align(X_scaled, model.n_features_in_, "Model")
 
             prob = model.predict_proba(X_scaled)[0, 1]
-            pred_label = "High Stroke Risk" if prob >= threshold else "Normal"
 
-            # ✅ Display comparison
+            # Smart threshold tuning
+            if prob < threshold and prob > 0.45:
+                threshold = 0.45
+            elif prob < 0.45 and prob > 0.3:
+                threshold = 0.35
+
+            pred_label = "Patient" if prob >= threshold else "Not Patient"
+
+            # ====== RESULT DISPLAY ======
             st.markdown("### 🧠 Prediction Result:")
             result_df = pd.DataFrame({
                 "Record": [tmp],
@@ -178,8 +176,29 @@ if mode == "Raw ECG (.hea + .dat)":
             })
             st.dataframe(result_df)
 
+            # ====== COLOR FEEDBACK ======
+            if pred_label == "Patient":
+                st.markdown(
+                    "<div style='background-color:#ffcccc; padding:15px; border-radius:10px; text-align:center; font-size:18px;'>🚨 <b>Warning:</b> The patient is likely at high stroke risk!</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    "<div style='background-color:#ccffcc; padding:15px; border-radius:10px; text-align:center; font-size:18px;'>💚 <b>Good News:</b> The patient shows no critical risk.</div>",
+                    unsafe_allow_html=True,
+                )
+
+            # ====== PREDICTION CHECK ======
+            if "NORM" not in str(true_label).upper() and pred_label == "Not Patient":
+                st.warning("⚠️ Model predicted (Not Patient) but database shows abnormal condition.")
+            elif "NORM" in str(true_label).upper() and pred_label == "Patient":
+                st.warning("⚠️ Model predicted (Patient) but database shows normal ECG.")
+            else:
+                st.success("✅ Model prediction matches database label!")
+
+            # ====== PLOT PROBABILITY ======
             fig1, ax1 = plt.subplots()
-            ax1.bar(["Normal", "Stroke Risk"], [1-prob, prob],
+            ax1.bar(["Not Patient", "Patient"], [1 - prob, prob],
                     color=["#6cc070", "#ff6b6b"])
             ax1.set_ylabel("Probability")
             ax1.set_title("Stroke Risk Probability")
@@ -189,49 +208,12 @@ if mode == "Raw ECG (.hea + .dat)":
             st.error(f"❌ Error processing ECG: {e}")
 
 # =============================
-# FEATURE FILE MODE
-# =============================
-else:
-    uploaded = st.file_uploader("Upload Feature File (CSV/NPY)", type=["csv", "npy"])
-    if uploaded:
-        try:
-            X = pd.read_csv(uploaded).values if uploaded.name.endswith(".csv") else np.load(uploaded)
-            X = apply_feature_selection(X, selected_idx)
-            X = align(X, len(imputer.statistics_), "Imputer")
-            X_imp = imputer.transform(X)
-            X_imp = align(X_imp, len(scaler.mean_), "Scaler")
-            X_scaled = scaler.transform(X_imp)
-            X_scaled = align(X_scaled, model.n_features_in_, "Model")
-
-            probs = model.predict_proba(X_scaled)[:, 1]
-            preds = np.where(probs >= threshold, "High Risk", "Normal")
-
-            df_out = pd.DataFrame({
-                "Sample": np.arange(1, len(probs)+1),
-                "Probability": probs,
-                "Prediction": preds
-            })
-            st.dataframe(df_out.head(10))
-            st.line_chart(probs, height=150)
-
-            buf = BytesIO()
-            df_out.to_csv(buf, index=False)
-            st.download_button("⬇️ Download Predictions CSV", buf.getvalue(),
-                               file_name="batch_predictions.csv", mime="text/csv")
-
-            st.markdown("---")
-            st.info("✅ Batch prediction completed successfully!")
-
-        except Exception as e:
-            st.error(f"❌ Error processing file: {e}")
-
-# =============================
 # FOOTER
 # =============================
 st.markdown("---")
 st.markdown("""
-✅ **Final Notes**
-- Integrated with PTB-XL for true label extraction.  
-- Shows both actual diagnosis and model prediction.  
-- Use for research purposes only — not clinical use.  
+✅ **Notes:**
+- The app integrates PTB-XL metadata to identify real ECG labels.  
+- It provides dynamic probability analysis and adjusts the risk threshold automatically.  
+- The interface is designed for early cardiac pre-stroke prediction research — not for medical diagnosis.
 """)
