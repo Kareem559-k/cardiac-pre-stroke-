@@ -14,12 +14,14 @@ warnings.filterwarnings("ignore")
 # ----------------------------
 st.set_page_config(page_title="Cardiac Pre-Stroke", page_icon="🫀", layout="centered")
 
+# ----------------------------
 # Custom CSS (Dark Blue Theme)
+# ----------------------------
 st.markdown("""
 <style>
 body {
     background-color: #0a192f;
-    color: #e6f1ff;
+    color: #ffffff;
 }
 [data-testid="stSidebar"] {
     display: none;
@@ -29,9 +31,10 @@ h1, h2, h3, h4 {
 }
 .stButton>button {
     background-color: #112240;
-    color: #64ffda;
+    color: #ffffff;
     border-radius: 10px;
     border: 1px solid #64ffda;
+    font-weight: bold;
 }
 .stButton>button:hover {
     background-color: #64ffda;
@@ -65,15 +68,18 @@ def extract_numeric_id(name):
     return int(match.group(1)) if match else None
 
 def simulate_auto_result(nid):
+    # لو الرقم غير معروف
     if nid is None:
         prob = random.uniform(0.4, 0.6)
         return prob, "Unknown", "⚠️ Unable to determine automatically.", "medium"
 
+    # لو فردي = مريض بنسبة عالية
     if nid % 2 == 1:
-        prob = random.uniform(0.74, 0.90)  # sick (odd)
+        prob = random.uniform(0.74, 0.95)
         return prob, "Patient", "⚠️ The patient may be at cardiac pre-stroke risk.", "high"
+    # لو زوجي = سليم بنسبة منخفضة
     else:
-        prob = random.uniform(0.05, 0.20)  # healthy (even)
+        prob = random.uniform(0.05, 0.20)
         return prob, "Not Patient", "💚 Appears healthy — low risk detected.", "low"
 
 def make_probability_bar(prob, severity):
@@ -83,12 +89,13 @@ def make_probability_bar(prob, severity):
     ax.set_xlim(0,1)
     ax.set_yticks([])
     ax.set_xticks([0,0.25,0.5,0.75,1])
-    ax.set_xlabel("Risk Level")
-    ax.text(prob, 0, f"{prob*100:.1f}%", va='center', fontsize=10, fontweight='bold', color='white')
+    ax.set_xlabel("Risk Level", color="white")
+    ax.text(prob, 0, f"{prob*100:.1f}%", va='center', fontsize=12, fontweight='bold', color='white')
     for spine in ax.spines.values():
         spine.set_visible(False)
     buf = BytesIO()
     plt.tight_layout()
+    fig.patch.set_facecolor("#0a192f")
     fig.savefig(buf, format="png", dpi=120, bbox_inches='tight', transparent=True)
     plt.close(fig)
     buf.seek(0)
@@ -112,10 +119,10 @@ if hea_file and dat_file:
         # ECG waveform
         st.markdown("#### 🩺 ECG Signal (first 2000 samples)")
         fig1, ax1 = plt.subplots(figsize=(8,2.2))
-        ax1.plot(y[:2000], color="#64ffda", linewidth=0.9)
+        ax1.plot(y[:2000], color="#64ffda", linewidth=1.0)
         ax1.set_xlim(0, min(2000, len(y)))
-        ax1.set_ylabel("Amplitude", color="#e6f1ff")
-        ax1.set_xlabel("Samples", color="#e6f1ff")
+        ax1.set_ylabel("Amplitude", color="white")
+        ax1.set_xlabel("Samples", color="white")
         ax1.grid(alpha=0.3)
         fig1.patch.set_facecolor("#0a192f")
         st.pyplot(fig1)
@@ -125,8 +132,8 @@ if hea_file and dat_file:
         st.markdown("#### 📊 Amplitude Distribution")
         fig2, ax2 = plt.subplots(figsize=(6,2))
         ax2.hist(y, bins=60, color="#00b4d8", alpha=0.9)
-        ax2.set_xlabel("Amplitude", color="#e6f1ff")
-        ax2.set_ylabel("Count", color="#e6f1ff")
+        ax2.set_xlabel("Amplitude", color="white")
+        ax2.set_ylabel("Count", color="white")
         ax2.grid(alpha=0.2)
         fig2.patch.set_facecolor("#0a192f")
         st.pyplot(fig2)
@@ -137,7 +144,7 @@ if hea_file and dat_file:
         if len(y) > 50:
             rms = np.sqrt(pd.Series(y).rolling(window=60).mean().fillna(method='bfill').values)
             fig3, ax3 = plt.subplots(figsize=(6,1.2))
-            ax3.plot(rms[-200:], color="#64ffda", linewidth=0.9)
+            ax3.plot(rms[-200:], color="#64ffda", linewidth=1.0)
             ax3.set_yticks([])
             ax3.set_xticks([])
             fig3.patch.set_facecolor("#0a192f")
@@ -153,7 +160,7 @@ if hea_file and dat_file:
 
     color_bg = {"high":"#331a1a","medium":"#2f2a00","low":"#1a3320"}[severity]
     st.markdown(f"""
-    <div style='background:{color_bg};padding:16px;border-radius:12px;text-align:center;font-size:16px'>
+    <div style='background:{color_bg};padding:16px;border-radius:12px;text-align:center;font-size:16px;color:white'>
         <b>{label}</b><br>{msg}<br><br><b>Risk Probability:</b> {prob*100:.1f}%
     </div>
     """, unsafe_allow_html=True)
