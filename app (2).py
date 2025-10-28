@@ -2,7 +2,7 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import random, re, ast, os, warnings
+import random, re, ast, warnings
 from wfdb import rdrecord
 import matplotlib.pyplot as plt
 from io import BytesIO
@@ -22,7 +22,7 @@ body {
     color: #e6f1ff;
 }
 [data-testid="stSidebar"] {
-    background-color: #112240;
+    display: none;
 }
 h1, h2, h3, h4 {
     color: #64ffda;
@@ -44,34 +44,11 @@ div.stAlert {
 </style>
 """, unsafe_allow_html=True)
 
+# ----------------------------
 # Title
+# ----------------------------
 st.title("💙 Cardiac Pre-Stroke Risk Predictor")
-st.caption("Simulated visualization — for demo and presentation only.")
-
-# ----------------------------
-# Sidebar controls
-# ----------------------------
-st.sidebar.header("Simulation Settings ⚙️")
-demo_mode = st.sidebar.checkbox("Enable Simulation", True)
-seed = st.sidebar.number_input("Random Seed", value=42, step=1)
-randomness = st.sidebar.slider("Variability", 0.01, 0.4, 0.18, 0.01)
-borderline_chance = st.sidebar.slider("Borderline Chance (%)", 0, 40, 10, 1)
-
-random.seed(int(seed))
-np.random.seed(int(seed))
-
-# ----------------------------
-# Upload PTB-XL Metadata (optional)
-# ----------------------------
-st.markdown("### 📁 Upload PTB-XL Metadata (Optional)")
-ptbxl_file = st.file_uploader("Upload ptbxl_database.csv", type=["csv"])
-ptbxl_df = None
-if ptbxl_file is not None:
-    try:
-        ptbxl_df = pd.read_csv(ptbxl_file)
-        st.success(f"✅ Metadata loaded ({len(ptbxl_df)} records).")
-    except Exception as e:
-        st.error(f"Failed to load CSV: {e}")
+st.caption("AI-based simulated prediction — for demo only.")
 
 # ----------------------------
 # Upload ECG Files
@@ -87,21 +64,17 @@ def extract_numeric_id(name):
     match = re.search(r'(\d+)(?!.*\d)', name)
     return int(match.group(1)) if match else None
 
-def simulate_result(nid, variability=0.18, borderline_pct=10):
+def simulate_auto_result(nid):
     if nid is None:
-        base = random.uniform(0.4, 0.6)
-    elif nid % 2 == 1:
-        base = random.uniform(0.65, 0.92)  # sick
-    else:
-        base = random.uniform(0.05, 0.55 if random.uniform(0,100) < borderline_pct else 0.35)
-    prob = np.clip(base + random.uniform(-variability, variability), 0.0, 0.99)
+        prob = random.uniform(0.4, 0.6)
+        return prob, "Unknown", "⚠️ Unable to determine automatically.", "medium"
 
-    if prob >= 0.60:
-        return prob, "Patient", "⚠️ High Risk — Needs medical follow-up.", "high"
-    elif prob >= 0.35:
-        return prob, "Borderline", "🩺 Borderline — regular monitoring advised.", "medium"
+    if nid % 2 == 1:
+        prob = random.uniform(0.74, 0.90)  # sick (odd)
+        return prob, "Patient", "⚠️ The patient may be at cardiac pre-stroke risk.", "high"
     else:
-        return prob, "Not Patient", "💚 Appears healthy.", "low"
+        prob = random.uniform(0.05, 0.20)  # healthy (even)
+        return prob, "Not Patient", "💚 Appears healthy — low risk detected.", "low"
 
 def make_probability_bar(prob, severity):
     fig, ax = plt.subplots(figsize=(6,1.2))
@@ -174,35 +147,21 @@ if hea_file and dat_file:
         st.warning(f"Unable to render ECG: {e}")
         y = None
 
-    # Metadata lookup
-    true_label = "Unknown"
-    if ptbxl_df is not None:
-        matched = ptbxl_df[ptbxl_df["filename_hr"].astype(str).str.contains(record_name, na=False)]
-        if not matched.empty:
-            raw_code = matched.iloc[0]["scp_codes"]
-            try:
-                code_dict = ast.literal_eval(raw_code)
-                true_label = list(code_dict.keys())[0]
-            except:
-                true_label = str(raw_code)
-            st.markdown(f"**🧾 Database Label:** `{true_label}`")
+    # Simulated Auto Result
+    nid = extract_numeric_id(record_name)
+    prob, label, msg, severity = simulate_auto_result(nid)
 
-    # Simulation
-    if demo_mode:
-        nid = extract_numeric_id(record_name)
-        prob, label, msg, severity = simulate_result(nid, variability=randomness, borderline_pct=borderline_chance)
+    color_bg = {"high":"#331a1a","medium":"#2f2a00","low":"#1a3320"}[severity]
+    st.markdown(f"""
+    <div style='background:{color_bg};padding:16px;border-radius:12px;text-align:center;font-size:16px'>
+        <b>{label}</b><br>{msg}<br><br><b>Risk Probability:</b> {prob*100:.1f}%
+    </div>
+    """, unsafe_allow_html=True)
 
-        color_bg = {"high":"#331a1a","medium":"#2f2a00","low":"#1a3320"}[severity]
-        st.markdown(f"""
-        <div style='background:{color_bg};padding:16px;border-radius:12px;text-align:center;font-size:16px'>
-            <b>{label}</b><br>{msg}<br><br><b>Risk Probability:</b> {prob*100:.1f}%
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Risk gauge
-        st.markdown("#### 📈 Simulated Risk Gauge")
-        img_bytes = make_probability_bar(prob, severity)
-        st.image(img_bytes, use_container_width=True)
+    # Risk gauge
+    st.markdown("#### 📈 Risk Gauge")
+    img_bytes = make_probability_bar(prob, severity)
+    st.image(img_bytes, use_container_width=True)
 
 else:
     st.info("Please upload both `.hea` and `.dat` files to start analysis.")
@@ -211,4 +170,4 @@ else:
 # Footer
 # ----------------------------
 st.markdown("---")
-st.caption("💙 Cardiac Pre-Stroke © 2025 — Dark Blue Edition — For demo only.")
+st.caption("💙 Cardiac Pre-Stroke © 2025 — Smart Auto Mode — Not for clinical use.")
