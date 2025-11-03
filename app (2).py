@@ -1,4 +1,4 @@
-# app.py - Cardiac Pre-Stroke (Final with explanations + PDF with graphs)
+# app.py - Cardiac Pre-Stroke (Final: app unchanged, PDF with heart background cover)
 import subprocess, sys
 subprocess.run([sys.executable, "-m", "pip", "install", "reportlab", "-q"])
 
@@ -14,6 +14,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RL
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
+from reportlab.graphics.shapes import Drawing, Path
+from reportlab.graphics import renderPM
 import streamlit.components.v1 as components
 
 # ---------------- PAGE CONFIG ----------------
@@ -37,7 +39,7 @@ with col1:
 with col2:
     dat_file = st.file_uploader("📊 Upload .dat file", type=["dat"])
 
-# Utility: save fig to bytes
+# Utility: save fig to bytes (PNG)
 def fig_to_bytes(fig, dpi=150):
     buf = BytesIO()
     fig.savefig(buf, format="png", bbox_inches='tight', dpi=dpi)
@@ -45,12 +47,35 @@ def fig_to_bytes(fig, dpi=150):
     plt.close(fig)
     return buf
 
+# Utility: create heart image PNG bytes via reportlab.graphics
+def make_heart_png(width=600, height=300, fill_color="#f2f8ff"):
+    # create a drawing and draw a stylized heart path centered
+    d = Drawing(width, height)
+    p = Path()
+    # coordinates scaled to drawing size (simple heart path)
+    # normalized coordinates then scaled
+    W = width
+    H = height
+    # Heart path using cubic curves (relative positions)
+    p.moveTo(0.5*W, 0.28*H)
+    p.curveTo(0.15*W, -0.05*H, -0.1*W, 0.45*H, 0.5*W, 0.85*H)
+    p.curveTo(1.1*W, 0.45*H, 0.85*W, -0.05*H, 0.5*W, 0.28*H)
+    p.closePath()
+    p.fillColor = colors.HexColor(fill_color)
+    p.strokeColor = None
+    d.add(p)
+    # render to PNG bytes
+    png_bytes = renderPM.drawToString(d, fmt='PNG')
+    return BytesIO(png_bytes)
+
 # ---------------- MAIN ----------------
 if hea_file and dat_file:
     record_name = hea_file.name.replace('.hea', '')
     # save uploaded files (wfdb reads by record name)
-    with open(hea_file.name, "wb") as f: f.write(hea_file.read())
-    with open(dat_file.name, "wb") as f: f.write(dat_file.read())
+    with open(hea_file.name, "wb") as f:
+        f.write(hea_file.read())
+    with open(dat_file.name, "wb") as f:
+        f.write(dat_file.read())
 
     # read record
     try:
@@ -115,7 +140,6 @@ if hea_file and dat_file:
         # status text under ECG
         status_text = ("Normal ECG Signal ✅" if is_healthy else "Abnormal ECG Signal ⚠️") if lang=="English" else ("إشارة قلب طبيعية ✅" if is_healthy else "إشارة قلب غير طبيعية ⚠️")
         st.markdown(f"**{status_text}**")
-        # brief explanation
         expl = (
             "ECG (electrocardiogram) shows the heart's electrical activity over time. Clinicians look for P, QRS, and T waves to assess rhythm and conduction."
             if lang=="English" else
@@ -137,7 +161,6 @@ if hea_file and dat_file:
         st.pyplot(fig2)
         pdf_figs["RMS Trend"] = fig_to_bytes(fig2)
 
-        # explanation and interpretation
         expl_rms = (
             "RMS (Root Mean Square) indicates the signal's overall energy. Large sustained increases may reflect abnormal electrical activity."
             if lang=="English" else
@@ -166,7 +189,6 @@ if hea_file and dat_file:
             st.pyplot(fig3)
             pdf_figs["Heart Rate"] = fig_to_bytes(fig3)
 
-            # details text
             avg_hr = np.mean(heart_rate)
             std_hr = np.std(heart_rate)
             if is_healthy:
@@ -214,7 +236,6 @@ if hea_file and dat_file:
                  "ملاحظة: التوزيع المتوازن شائع في إشارات القلب الطبيعية؛ القيم الشاذة قد تشير إلى تشويش أو أحداث غير طبيعية." )
         st.markdown(note)
 
-        # state-specific remark
         remark = ( "Distribution appears typical." if is_healthy else "Distribution shows atypical deviations — interpret with caution." ) if lang=="English" else ( "التوزيع يبدو نموذجيًا." if is_healthy else "التوزيع يظهر انحرافات غير اعتيادية — فسر بحذر." )
         st.markdown(f"**{remark}**")
 
@@ -237,7 +258,6 @@ if hea_file and dat_file:
     with tab7:
         st.markdown("### Complete Diagnosis of the Condition" if lang == "English" else "### التشخيص الكامل للحالة")
 
-        # Main result block (keeps previous behavior)
         colL, colR = st.columns([1.6, 1])
         with colL:
             if is_healthy:
@@ -255,13 +275,11 @@ if hea_file and dat_file:
                                 "🟢 ابقى هادي — هذه نتيجة فحص ذكي وليست تشخيصًا نهائيًا. يُنصح بزيارة الطبيب للتقييم.")
                 st.markdown(f"<p style='color:green'><b>{reassurance2}</b></p>", unsafe_allow_html=True)
 
-            # Recommendation (clear)
             recommendation = ( "Recommendation: Visit a cardiologist for full assessment — take this result to your appointment."
                                if lang=="English" else
                                "التوصية: راجع طبيب قلب للتقييم الكامل — احتفظ بهذه النتيجة عند ذهابك للفحص.")
             st.markdown(recommendation)
 
-            # show predicted stroke timing if applicable
             if not is_healthy:
                 timing_txt = (f"🔴 Based on the model probability, a stroke could occur in roughly **{days_left} days**. Seek urgent evaluation."
                               if lang=="English" else
@@ -385,7 +403,7 @@ weighted avg       0.91      0.90      0.89      4000
         # ------- Download PDF -------
         st.markdown("### 📥 Download Report")
         if st.button("📄 Generate & Download Report"):
-            # build PDF with intro page + images
+            # build PDF with cover + images
             buffer = BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30,leftMargin=30, topMargin=30,bottomMargin=18)
             styles = getSampleStyleSheet()
@@ -393,34 +411,61 @@ weighted avg       0.91      0.90      0.89      4000
             normal = styles["Normal"]
 
             story = []
-            # Cover page with project name and heart background hint (simple)
-            story.append(Spacer(1, 20))
+            # Cover page with project name and heart background image (rendered)
+            heart_img_buf = make_heart_png(width=600, height=300, fill_color="#eef6ff")
+            heart_img_buf.seek(0)
+            # center title
+            story.append(Spacer(1, 40))
             story.append(Paragraph("🩺 <b>Cardiac Pre-Stroke</b>", title_style))
-            story.append(Spacer(1, 8))
+            story.append(Spacer(1, 6))
             subtitle = "AI-powered ECG Analyzer for Early Detection" if lang=="English" else "نظام ذكاء اصطناعي لتحليل إشارات القلب واكتشاف الأمراض مبكرًا"
-            story.append(Paragraph(subtitle, ParagraphStyle('sub', parent=styles['Normal'], alignment=1, fontSize=12, textColor=colors.grey)))
+            story.append(Paragraph(subtitle, ParagraphStyle('sub', parent=styles['Normal'], alignment=1, fontSize=11, textColor=colors.grey)))
             story.append(Spacer(1, 10))
-
-            # small heart art (unicode) and description
-            story.append(Paragraph("❤️ Project Report", ParagraphStyle('h2', parent=styles['Heading2'], alignment=1)))
-            story.append(Spacer(1, 12))
-            story.append(Paragraph("This report includes ECG, RMS trend, Heart Rate, Spectrogram, Histogram, ROC and Diagnosis summary." if lang=="English" else "يتضمن هذا التقرير: مخطط ECG، اتجاه RMS، معدل القلب، المخطط الطيفي، الهستوجرام، منحنى ROC، وملخص التشخيص.", normal))
+            # Insert heart background image centered (transparent look)
+            try:
+                img_cover = RLImage(heart_img_buf, width=420, height=220)
+                story.append(Spacer(1, 20))
+                story.append(img_cover)
+            except Exception:
+                story.append(Paragraph("(Heart image not available)", normal))
             story.append(PageBreak())
 
             # add figures saved earlier
             for name, img_buf in pdf_figs.items():
                 story.append(Paragraph(f"<b>{name}</b>", styles["Heading3"]))
                 img_buf.seek(0)
-                # Insert image sized to width ~450
                 try:
                     img = RLImage(img_buf, width=450, height=250)
                     story.append(img)
                 except Exception:
-                    # fallback: skip if failure
                     story.append(Paragraph("(Image could not be embedded)", normal))
                 story.append(Spacer(1, 12))
+                # short explanation under each figure
+                if name == "ECG Signal":
+                    expl = ("ECG shows electrical activity — look at waveform shapes (P, QRS, T)."
+                            if lang=="English" else "يُظهر ECG النشاط الكهربائي — راجع أشكال الموجات (P, QRS, T).")
+                elif name == "RMS Trend":
+                    expl = ("RMS indicates signal energy; large shifts may signal irregular activity."
+                            if lang=="English" else "قيمة RMS تشير إلى طاقة الإشارة؛ التغيرات الكبيرة قد تدل على نشاط غير طبيعي.")
+                elif name == "Heart Rate":
+                    expl = ("Heart rate trend (BPM). Variability suggests irregular rhythm."
+                            if lang=="English" else "اتجاه معدل القلب (ض/د). التقلبات قد تشير لعدم انتظام.")
+                elif name == "Spectrogram":
+                    expl = ("Spectrogram: frequency content over time — useful for transient abnormalities."
+                            if lang=="English" else "المخطط الطيفي: محتوى التردد مع الزمن — مفيد لاكتشاف اضطرابات عابرة.")
+                elif name == "Histogram":
+                    expl = ("Histogram: amplitude distribution — outliers may indicate artifacts."
+                            if lang=="English" else "الهستوجرام: توزيع السعات — القيم الشاذة قد تشير لتشويش.")
+                elif name == "Diagnosis Risk Bar":
+                    expl = ("Risk bar representing model's stroke probability."
+                            if lang=="English" else "شريط يوضح احتمال الجلطة حسب نموذج الذكاء الاصطناعي.")
+                else:
+                    expl = ""
+                if expl:
+                    story.append(Paragraph(expl, normal))
+                    story.append(Spacer(1, 8))
 
-            # Add diagnosis summary
+            # Diagnosis summary
             story.append(Paragraph("<b>Diagnosis Summary</b>", styles["Heading2"]))
             summary_lines = [
                 f"Disease: {disease[0]} ({disease[1]})",
@@ -434,7 +479,8 @@ weighted avg       0.91      0.90      0.89      4000
                 story.append(Paragraph(ln, normal))
                 story.append(Spacer(1, 6))
 
-            story.append(Spacer(1, 20))
+            # Model metrics
+            story.append(Spacer(1, 12))
             story.append(Paragraph("Model Metrics:", styles["Heading3"]))
             metrics_text = [
                 "Accuracy: 90.12%",
