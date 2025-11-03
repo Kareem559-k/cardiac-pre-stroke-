@@ -1,6 +1,6 @@
 # app.py - Cardiac Pre-Stroke (Final: app unchanged, PDF with heart background cover)
 import subprocess, sys
-subprocess.run([sys.executable, "-m", "pip", "install", "reportlab", "-q"])
+subprocess.run([sys.executable, "-m", "pip", "install", "reportlab", "Pillow", "-q"])
 
 import streamlit as st
 import numpy as np
@@ -14,8 +14,9 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RL
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.graphics.shapes import Drawing, Path
-from reportlab.graphics import renderPM
+# removed reportlab.graphics.renderPM dependency to avoid RenderPMError
+
+from PIL import Image, ImageDraw  # using Pillow to draw heart PNG
 import streamlit.components.v1 as components
 
 # ---------------- PAGE CONFIG ----------------
@@ -47,26 +48,39 @@ def fig_to_bytes(fig, dpi=150):
     plt.close(fig)
     return buf
 
-# Utility: create heart image PNG bytes via reportlab.graphics
+# Utility: create heart image PNG bytes via Pillow (works in headless environments)
 def make_heart_png(width=600, height=300, fill_color="#f2f8ff"):
-    # create a drawing and draw a stylized heart path centered
-    d = Drawing(width, height)
-    p = Path()
-    # coordinates scaled to drawing size (simple heart path)
-    # normalized coordinates then scaled
-    W = width
-    H = height
-    # Heart path using cubic curves (relative positions)
-    p.moveTo(0.5*W, 0.28*H)
-    p.curveTo(0.15*W, -0.05*H, -0.1*W, 0.45*H, 0.5*W, 0.85*H)
-    p.curveTo(1.1*W, 0.45*H, 0.85*W, -0.05*H, 0.5*W, 0.28*H)
-    p.closePath()
-    p.fillColor = colors.HexColor(fill_color)
-    p.strokeColor = None
-    d.add(p)
-    # render to PNG bytes
-    png_bytes = renderPM.drawToString(d, fmt='PNG')
-    return BytesIO(png_bytes)
+    """
+    Returns a BytesIO buffer containing a PNG image of a stylized heart.
+    Uses Pillow to avoid reportlab.renderPM backend issues.
+    """
+    img = Image.new("RGBA", (width, height), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(img)
+
+    # center and size
+    x = width / 2
+    y = height / 3
+    size = min(width, height) / 3.2
+
+    # draw two semicircles (top lobes)
+    # left lobe bounding box
+    left_box = [x - size*1.3, y - size, x, y + size*0.8]
+    right_box = [x, y - size, x + size*1.3, y + size*0.8]
+    draw.pieslice(left_box, 180, 360, fill=fill_color)
+    draw.pieslice(right_box, 180, 360, fill=fill_color)
+
+    # draw bottom triangle/polygon
+    points = [
+        (x - size*1.3, y + size*0.3),
+        (x + size*1.3, y + size*0.3),
+        (x, y + size*2)
+    ]
+    draw.polygon(points, fill=fill_color)
+
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
 
 # ---------------- MAIN ----------------
 if hea_file and dat_file:
