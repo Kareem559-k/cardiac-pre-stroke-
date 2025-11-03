@@ -4,29 +4,20 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
 import random, re
 
-# إعداد الصفحة
 st.set_page_config(page_title="💙 Cardiac Pre-Stroke", page_icon="🫀", layout="wide")
 
-# 🌌 الثيم الداكن المتحرك
+# 🌌 تنسيق احترافي
 st.markdown("""
 <style>
-body {
-    background-color: #0b132b;
-    color: #ffffff;
-    font-family: 'Segoe UI';
-}
-h1 {
-    color: #00aaff;
-    text-align: center;
-    animation: pulse 2s infinite;
-}
+body {background-color:#0b132b;color:#ffffff;font-family:'Segoe UI';}
+h1{text-align:center;color:#00aaff;animation:pulse 2s infinite;}
 @keyframes pulse {
     0% { text-shadow: 0 0 5px #00aaff; }
     50% { text-shadow: 0 0 25px #00aaff; }
     100% { text-shadow: 0 0 5px #00aaff; }
 }
 .card {
-    background-color: rgba(0, 119, 182, 0.15);
+    background-color: rgba(0,119,182,0.15);
     border: 1px solid #00aaff;
     border-radius: 15px;
     padding: 15px;
@@ -35,16 +26,13 @@ h1 {
 </style>
 """, unsafe_allow_html=True)
 
-# العنوان
 st.markdown("<h1>🫀 Cardiac Pre-Stroke</h1>", unsafe_allow_html=True)
 st.caption("AI-based ECG Analyzer using CNN + LSTM (Simulated)")
 
-# --- تحميل البيانات ---
 st.sidebar.header("📂 Upload ECG Files")
 hea = st.sidebar.file_uploader("Upload .hea", type=["hea"])
 dat = st.sidebar.file_uploader("Upload .dat", type=["dat"])
 
-# --- دوال مساعدة ---
 def extract_id(name):
     m = re.search(r'(\d+)(?!.*\d)', name)
     return int(m.group(1)) if m else random.randint(1, 99)
@@ -61,7 +49,28 @@ def simulate_signal(ecg_id):
         ecg += 0.3*np.sin(2*np.pi*5*t) + np.random.normal(0, 0.1, len(t))
     return t, clean_ecg(ecg)
 
-# --- العرض الرئيسي ---
+def disease_waveform(disease):
+    """Create small ECG-style waveform per disease."""
+    t = np.linspace(0, 1, 500)
+    base = np.sin(2*np.pi*2*t)
+    if "Tachy" in disease:
+        return t, np.sin(2*np.pi*5*t)
+    if "Brady" in disease:
+        return t, np.sin(2*np.pi*0.7*t)
+    if "Arrhythmia" in disease:
+        arr = base.copy()
+        arr[200:250] += 0.5*np.random.randn(50)
+        return t, arr
+    if "Fibrillation" in disease:
+        return t, 0.6*np.sin(2*np.pi*7*t + np.random.randn()*0.3)
+    if "Infarction" in disease:
+        inf = base.copy()
+        inf[300:310] -= 1
+        return t, inf
+    if "Pre-Stroke" in disease:
+        return t, base + 0.2*np.sin(2*np.pi*3*t)
+    return t, base
+
 if hea and dat:
     record_name = hea.name.replace(".hea", "")
     ecg_id = extract_id(record_name)
@@ -73,7 +82,7 @@ if hea and dat:
     col1, col2 = st.columns(2)
 
     with col1:
-        fig1, ax1 = plt.subplots(figsize=(8, 3))
+        fig1, ax1 = plt.subplots(figsize=(8,3))
         ax1.plot(t[:800], ecg_clean[:800], color="#00aaff", linewidth=1.5)
         ax1.set_facecolor("#0b132b")
         ax1.set_title("🩺 ECG Signal", color="#00aaff")
@@ -86,34 +95,27 @@ if hea and dat:
     with col2:
         fft_vals = np.abs(np.fft.rfft(ecg_clean))
         freqs = np.fft.rfftfreq(len(ecg_clean), 1/500)
-        fig2, ax2 = plt.subplots(figsize=(8, 3))
+        fig2, ax2 = plt.subplots(figsize=(8,3))
         ax2.plot(freqs[:200], fft_vals[:200], color="#ff4d4d", linewidth=1.3)
         ax2.set_facecolor("#0b132b")
-        ax2.set_title("⚡ ECG Micro-Dynamics (Frequency Domain)", color="#ff4d4d")
+        ax2.set_title("⚡ ECG Micro-Dynamics", color="#ff4d4d")
         ax2.set_xlabel("Frequency (Hz)", color="white")
         ax2.set_ylabel("Power", color="white")
         ax2.grid(alpha=0.2)
         st.pyplot(fig2)
         plt.close(fig2)
 
-    # --- تحليل الموجة ---
-    analysis_text = """
+    # --- التحليل ---
+    st.markdown("""
     <div class='card'>
     <h4>📘 ECG Wave Interpretation</h4>
-    <b>English:</b> The P wave shows atrial depolarization.  
-    The QRS complex represents ventricular contraction, and the T wave shows recovery.  
-    Abnormal QRS or elevated T indicates potential cardiac distress.  
-    <br><br>
-    <b>عربي:</b> تمثل موجة P انقباض الأذين، ومركب QRS انقباض البطين،  
-    وموجة T مرحلة التعافي.  
-    أي تشوه في QRS أو ارتفاع في T يشير إلى خطر في القلب.
+    <b>English:</b> P wave = atrial depolarization; QRS = ventricular contraction; T wave = recovery phase.  
+    <b>عربي:</b> موجة P تعبر عن انقباض الأذين، مركب QRS انقباض البطين، وموجة T مرحلة التعافي.
     </div>
-    """
-    st.markdown(analysis_text, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-    # --- احتمالات الأمراض ---
+    # --- الأمراض ---
     st.markdown("<h3>🧠 AI Predicted Cardiac Conditions</h3>", unsafe_allow_html=True)
-
     diseases = {
         "Pre-Stroke Risk": 0.85 if ecg_id % 2 else 0.12,
         "Arrhythmia": 0.72 if ecg_id % 2 else 0.25,
@@ -131,6 +133,16 @@ if hea and dat:
             <b>{d}</b><br>{msg}<br><b>Probability:</b> {p*100:.1f}%
         </div>
         """, unsafe_allow_html=True)
+
+        # --- رسم الجراف لكل مرض ---
+        t2, y2 = disease_waveform(d)
+        fig, ax = plt.subplots(figsize=(6,1.5))
+        ax.plot(t2, y2, color=color, linewidth=1.5)
+        ax.set_facecolor("#0b132b")
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_title(f"{d} ECG Pattern", color=color, fontsize=10)
+        st.pyplot(fig)
+        plt.close(fig)
 
     # --- الملاحظات ---
     st.markdown("""
