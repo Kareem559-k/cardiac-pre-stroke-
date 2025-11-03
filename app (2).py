@@ -15,31 +15,31 @@ warnings.filterwarnings("ignore")
 st.set_page_config(page_title="💙 Cardiac Multi-Disease Analyzer", page_icon="🫀", layout="centered")
 
 # --------------------------------
-# Custom Style
+# Custom Style (Dark Mode)
 # --------------------------------
 st.markdown("""
 <style>
 body {
-    background: linear-gradient(135deg, #0d47a1 0%, #42a5f5 100%);
+    background: linear-gradient(135deg, #0a192f 0%, #112d4e 100%);
     color: #ffffff;
 }
 [data-testid="stSidebar"] { display: none; }
 h1, h2, h3, h4, h5 { color: #ffffff; }
 .stButton>button {
-    background-color: #1565c0;
+    background-color: #1b263b;
     color: #ffffff;
     border-radius: 10px;
-    border: 1px solid #90caf9;
+    border: 1px solid #00b4d8;
     transition: 0.3s;
 }
 .stButton>button:hover {
-    background-color: #90caf9;
-    color: #0d47a1;
-    border: 1px solid #0d47a1;
+    background-color: #00b4d8;
+    color: #0a192f;
+    border: 1px solid #0a192f;
 }
 div.stAlert {
-    background-color: rgba(13, 71, 161, 0.3) !important;
-    border-left: 4px solid #ffffff !important;
+    background-color: rgba(10, 25, 47, 0.3) !important;
+    border-left: 4px solid #00b4d8 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -47,7 +47,7 @@ div.stAlert {
 # --------------------------------
 # Title
 # --------------------------------
-st.title("🩺 Cardiac Pre-Stroke & Arrhythmia Analyzer")
+st.title("🩺 Cardiac Pre-Stroke & Multi-Disease Analyzer")
 st.caption("AI-powered simulated ECG diagnostic system — for demonstration purposes only.")
 
 # --------------------------------
@@ -65,7 +65,6 @@ def extract_numeric_id(name):
     return int(match.group(1)) if match else None
 
 def auto_clean_ecg(signal):
-    # Butterworth low-pass filter to simulate denoising
     b, a = butter(3, 0.1)
     return filtfilt(b, a, signal)
 
@@ -80,12 +79,12 @@ def simulate_multi_disease(nid):
     if nid is None:
         return diseases
 
-    if nid % 2 == 1:  # Odd = Patient
+    if nid % 2 == 1:
         diseases["Pre-Stroke"] = random.uniform(0.74, 0.9)
         diseases["Arrhythmia"] = random.uniform(0.65, 0.85)
         diseases["Myocardial Infarction"] = random.uniform(0.5, 0.7)
         diseases["Atrial Fibrillation"] = random.uniform(0.4, 0.6)
-    else:  # Even = Healthy
+    else:
         diseases["Pre-Stroke"] = random.uniform(0.05, 0.15)
         diseases["Arrhythmia"] = random.uniform(0.05, 0.2)
         diseases["Myocardial Infarction"] = random.uniform(0.1, 0.25)
@@ -109,6 +108,24 @@ def make_probability_bar(prob, label):
     buf.seek(0)
     return buf.getvalue()
 
+def make_donut_chart(data):
+    labels = list(data.keys())
+    values = [v*100 for v in data.values()]
+    colors = ["#ff4d4d", "#ffd166", "#06d6a0", "#118ab2"]
+
+    fig, ax = plt.subplots(figsize=(4.5, 4.5))
+    wedges, texts, autotexts = ax.pie(
+        values, labels=labels, autopct="%1.1f%%", startangle=90,
+        colors=colors, textprops={"color":"white"}, wedgeprops={"width":0.4}
+    )
+    ax.set_title("🩸 Disease Risk Distribution", color="white", fontsize=13)
+    fig.patch.set_alpha(0)
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=120, bbox_inches='tight', transparent=True)
+    plt.close(fig)
+    buf.seek(0)
+    return buf.getvalue()
+
 # --------------------------------
 # Main
 # --------------------------------
@@ -123,25 +140,23 @@ if hea_file and dat_file:
         rec = rdrecord(record_name)
         sig = rec.p_signal
         y = sig[:,0] if sig.ndim > 1 else sig
-
-        # Step 1: Clean ECG automatically
         y_clean = auto_clean_ecg(y)
 
-        # Step 2: ECG waveform
+        # ECG Signal
         st.markdown("#### 🩸 ECG Signal (first 2000 samples)")
         fig1, ax1 = plt.subplots(figsize=(8,2.2))
-        ax1.plot(y_clean[:2000], color="#f5f5f5", linewidth=0.9)
+        ax1.plot(y_clean[:2000], color="#00b4d8", linewidth=0.9)
         ax1.set_ylabel("Amplitude", color="white")
         ax1.set_xlabel("Samples", color="white")
-        ax1.grid(alpha=0.2)
+        ax1.grid(alpha=0.3)
         fig1.patch.set_alpha(0)
         st.pyplot(fig1)
         plt.close(fig1)
 
-        # Step 3: Amplitude Distribution
+        # Amplitude Histogram
         st.markdown("#### 📊 Amplitude Distribution")
         fig2, ax2 = plt.subplots(figsize=(6,2))
-        ax2.hist(y_clean, bins=60, color="#42a5f5", alpha=0.9)
+        ax2.hist(y_clean, bins=60, color="#0077b6", alpha=0.9)
         ax2.set_xlabel("Amplitude", color="white")
         ax2.set_ylabel("Count", color="white")
         ax2.grid(alpha=0.3)
@@ -149,33 +164,21 @@ if hea_file and dat_file:
         st.pyplot(fig2)
         plt.close(fig2)
 
-        # Step 4: RMS trend
+        # RMS Trend
         st.markdown("#### ⚡ Signal RMS Trend")
         rms = np.sqrt(pd.Series(y_clean).rolling(window=80).mean().fillna(method='bfill').values)
         fig3, ax3 = plt.subplots(figsize=(6,1.2))
-        ax3.plot(rms[-200:], color="#bbdefb", linewidth=0.9)
-        ax3.set_yticks([])
-        ax3.set_xticks([])
+        ax3.plot(rms[-200:], color="#90e0ef", linewidth=1)
+        ax3.set_yticks([]); ax3.set_xticks([])
         fig3.patch.set_alpha(0)
         st.pyplot(fig3)
         plt.close(fig3)
-
-        # Step 5: Simulated heatmap (Explainable AI)
-        st.markdown("#### 🔍 Explainable AI — Focus Heatmap")
-        fig4, ax4 = plt.subplots(figsize=(6,1.2))
-        focus = np.abs(np.sin(np.linspace(0, 4*np.pi, len(y_clean[:200]))))
-        ax4.imshow([focus], cmap='hot', aspect='auto')
-        ax4.set_yticks([])
-        ax4.set_xticks([])
-        fig4.patch.set_alpha(0)
-        st.pyplot(fig4)
-        plt.close(fig4)
 
     except Exception as e:
         st.warning(f"⚠️ Unable to read ECG: {e}")
         y_clean = None
 
-    # Step 6: Simulate multi-disease result
+    # Simulated multi-disease result
     nid = extract_numeric_id(record_name)
     results = simulate_multi_disease(nid)
 
@@ -190,7 +193,11 @@ if hea_file and dat_file:
         """, unsafe_allow_html=True)
         img_bytes = make_probability_bar(prob, disease)
         st.image(img_bytes, use_container_width=True)
-        st.markdown("")
+
+    # Donut Chart (after results)
+    st.markdown("### 📈 Overall Disease Risk Summary")
+    donut_img = make_donut_chart(results)
+    st.image(donut_img, use_container_width=False)
 
 else:
     st.info("Please upload both `.hea` and `.dat` files to start analysis.")
@@ -199,4 +206,4 @@ else:
 # Footer
 # --------------------------------
 st.markdown("---")
-st.caption("💙 Cardiac Multi-Disease Analyzer © 2025 — Smart Auto Mode — AI Simulation Only.")
+st.caption("💙 Cardiac Multi-Disease Analyzer © 2025 — Smart AI Mode — Simulated ML System.")
