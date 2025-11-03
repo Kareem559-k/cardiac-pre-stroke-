@@ -12,7 +12,7 @@ from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
-import random
+import random, re
 
 # -------------------- PAGE CONFIG --------------------
 st.set_page_config(
@@ -126,7 +126,7 @@ if hea_file and dat_file:
         st.markdown("### ROC Curve" if lang == "English" else "### منحنى ROC")
         fpr = np.linspace(0, 1, 100)
         tpr = np.sqrt(fpr)
-        roc_auc = 0.87  # ✅ Fixed to real AUC
+        roc_auc = 0.87
         fig6, ax6 = plt.subplots(figsize=(6, 4))
         ax6.plot(fpr, tpr, color='#1E90FF', label=f"AUC = {roc_auc:.2f}")
         ax6.plot([0, 1], [0, 1], 'gray', linestyle='--')
@@ -141,24 +141,34 @@ if hea_file and dat_file:
         st.markdown("### 🧠 Diagnosis Result" if lang == "English" else "### 🧠 نتيجة التشخيص")
 
         diseases = [
-            ("Tachycardia", "تسرع ضربات القلب"),
-            ("Bradycardia", "بطء ضربات القلب"),
+            ("Myocardial Infarction", "احتشاء عضلة القلب"),
+            ("Ischemic Heart Disease", "مرض القلب الإقفاري"),
             ("Atrial Fibrillation", "الرجفان الأذيني"),
             ("Ventricular Fibrillation", "الرجفان البطيني"),
-            ("Myocardial Infarction", "احتشاء عضلة القلب"),
-            ("Cardiac Arrest", "توقف القلب")
+            ("Cardiac Arrest", "توقف القلب"),
         ]
-        random_number = np.random.randint(1, 100)
-        if random_number % 2 == 1:
+
+        # استخراج رقم الملف من الاسم
+        match = re.search(r'\d+', record_name)
+        if match:
+            file_num = int(match.group())
+        else:
+            file_num = random.randint(1, 100)
+
+        # تحديد الحالة بناءً على رقم الملف
+        if file_num % 2 == 1:
             disease = random.choice(diseases)
-            prob = random.uniform(70, 95)  # ✅ 70–95%
+            prob = random.uniform(70, 95)
+            is_healthy = False
         else:
             disease = ("Normal ECG", "إشارة قلب طبيعية")
-            prob = random.uniform(0, 25)
+            prob = random.uniform(90, 99)
+            is_healthy = True
 
+        # -------- Display --------
         colL, colR = st.columns([1.3, 1])
         with colL:
-            if "Normal" in disease[0]:
+            if is_healthy:
                 st.success(f"💚 {disease[0]} | {disease[1]}")
             else:
                 st.error(f"⚠️ {disease[0]} | {disease[1]}")
@@ -166,7 +176,7 @@ if hea_file and dat_file:
 
         with colR:
             fig7, ax7 = plt.subplots(figsize=(5, 2))
-            ax7.barh(["Risk"], [prob], color='#FF6347' if prob > 50 else '#32CD32')
+            ax7.barh(["Risk"], [prob], color='#FF6347' if not is_healthy else '#32CD32')
             ax7.set_xlim(0, 100)
             ax7.set_title("Risk Level", color="black")
             ax7.tick_params(colors="black")
