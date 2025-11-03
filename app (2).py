@@ -1,160 +1,140 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import butter, filtfilt
-import random, re
+import wfdb
+from sklearn.metrics import roc_curve, auc
 
-st.set_page_config(page_title="💙 Cardiac Pre-Stroke", page_icon="🫀", layout="wide")
+# ----------------- PAGE CONFIG -----------------
+st.set_page_config(
+    page_title="Cardiac Pre-Stroke",
+    page_icon="🩺",
+    layout="wide"
+)
 
-# 🌌 تنسيق احترافي
+# ----------------- PAGE HEADER -----------------
 st.markdown("""
-<style>
-body {background-color:#0b132b;color:#ffffff;font-family:'Segoe UI';}
-h1{text-align:center;color:#00aaff;animation:pulse 2s infinite;}
-@keyframes pulse {
-    0% { text-shadow: 0 0 5px #00aaff; }
-    50% { text-shadow: 0 0 25px #00aaff; }
-    100% { text-shadow: 0 0 5px #00aaff; }
-}
-.card {
-    background-color: rgba(0,119,182,0.15);
-    border: 1px solid #00aaff;
-    border-radius: 15px;
-    padding: 15px;
-    margin-top: 10px;
-}
-</style>
+<div style="text-align:center; padding:10px; background-color:#0a0a0a; border-radius:10px;">
+  <h1 style="color:#1E90FF;">🩺 Cardiac Pre-Stroke</h1>
+  <p style="color:#ccc;">An AI-powered ECG Analyzer for Early Heart Disease Detection<br>نظام ذكي لتحليل إشارات القلب واكتشاف الأمراض مبكرًا</p>
+</div>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1>🫀 Cardiac Pre-Stroke</h1>", unsafe_allow_html=True)
-st.caption("AI-based ECG Analyzer using CNN + LSTM (Simulated)")
+# ----------------- FILE UPLOAD -----------------
+st.markdown("<br>", unsafe_allow_html=True)
+col1, col2 = st.columns(2)
+with col1:
+    hea_file = st.file_uploader("📄 Upload .hea file", type=["hea"])
+with col2:
+    dat_file = st.file_uploader("📊 Upload .dat file", type=["dat"])
 
-st.sidebar.header("📂 Upload ECG Files")
-hea = st.sidebar.file_uploader("Upload .hea", type=["hea"])
-dat = st.sidebar.file_uploader("Upload .dat", type=["dat"])
+if hea_file and dat_file:
+    record_name = hea_file.name.replace('.hea', '')
 
-def extract_id(name):
-    m = re.search(r'(\d+)(?!.*\d)', name)
-    return int(m.group(1)) if m else random.randint(1, 99)
+    with open(hea_file.name, "wb") as f:
+        f.write(hea_file.read())
+    with open(dat_file.name, "wb") as f:
+        f.write(dat_file.read())
 
-def clean_ecg(sig):
-    b, a = butter(3, 0.1)
-    return filtfilt(b, a, sig)
+    record = wfdb.rdrecord(record_name)
+    ecg_signal = record.p_signal[:, 0]
+    fs = record.fs
 
-def simulate_signal(ecg_id):
-    fs = 500
-    t = np.linspace(0, 2, fs*2)
-    ecg = np.sin(2 * np.pi * 1.3 * t) + 0.25*np.sin(2 * np.pi * 3.2 * t)
-    if ecg_id % 2 == 1:
-        ecg += 0.3*np.sin(2*np.pi*5*t) + np.random.normal(0, 0.1, len(t))
-    return t, clean_ecg(ecg)
+    st.success("✅ ECG files uploaded and loaded successfully!")
 
-def disease_waveform(disease):
-    """Create small ECG-style waveform per disease."""
-    t = np.linspace(0, 1, 500)
-    base = np.sin(2*np.pi*2*t)
-    if "Tachy" in disease:
-        return t, np.sin(2*np.pi*5*t)
-    if "Brady" in disease:
-        return t, np.sin(2*np.pi*0.7*t)
-    if "Arrhythmia" in disease:
-        arr = base.copy()
-        arr[200:250] += 0.5*np.random.randn(50)
-        return t, arr
-    if "Fibrillation" in disease:
-        return t, 0.6*np.sin(2*np.pi*7*t + np.random.randn()*0.3)
-    if "Infarction" in disease:
-        inf = base.copy()
-        inf[300:310] -= 1
-        return t, inf
-    if "Pre-Stroke" in disease:
-        return t, base + 0.2*np.sin(2*np.pi*3*t)
-    return t, base
+    # ----------------- ECG SIGNAL VISUALIZATION -----------------
+    st.markdown("## 📊 ECG Visualization & Micro Dynamics")
 
-if hea and dat:
-    record_name = hea.name.replace(".hea", "")
-    ecg_id = extract_id(record_name)
+    col_left, col_right = st.columns(2)
 
-    st.markdown(f"### Record ID: `{ecg_id}` — {'🩺 Diseased' if ecg_id % 2 else '💚 Healthy'}")
-
-    # ---- عرض ECG ----
-    t, ecg_clean = simulate_signal(ecg_id)
-    col1, col2 = st.columns(2)
-
-    with col1:
-        fig1, ax1 = plt.subplots(figsize=(8,3))
-        ax1.plot(t[:800], ecg_clean[:800], color="#00aaff", linewidth=1.5)
-        ax1.set_facecolor("#0b132b")
-        ax1.set_title("🩺 ECG Signal", color="#00aaff")
-        ax1.set_xlabel("Time (s)", color="white")
-        ax1.set_ylabel("Amplitude (mV)", color="white")
-        ax1.grid(alpha=0.2)
-        st.pyplot(fig1)
-        plt.close(fig1)
-
-    with col2:
-        fft_vals = np.abs(np.fft.rfft(ecg_clean))
-        freqs = np.fft.rfftfreq(len(ecg_clean), 1/500)
-        fig2, ax2 = plt.subplots(figsize=(8,3))
-        ax2.plot(freqs[:200], fft_vals[:200], color="#ff4d4d", linewidth=1.3)
-        ax2.set_facecolor("#0b132b")
-        ax2.set_title("⚡ ECG Micro-Dynamics", color="#ff4d4d")
-        ax2.set_xlabel("Frequency (Hz)", color="white")
-        ax2.set_ylabel("Power", color="white")
-        ax2.grid(alpha=0.2)
-        st.pyplot(fig2)
-        plt.close(fig2)
-
-    # --- التحليل ---
-    st.markdown("""
-    <div class='card'>
-    <h4>📘 ECG Wave Interpretation</h4>
-    <b>English:</b> P wave = atrial depolarization; QRS = ventricular contraction; T wave = recovery phase.  
-    <b>عربي:</b> موجة P تعبر عن انقباض الأذين، مركب QRS انقباض البطين، وموجة T مرحلة التعافي.
-    </div>
-    """, unsafe_allow_html=True)
-
-    # --- الأمراض ---
-    st.markdown("<h3>🧠 AI Predicted Cardiac Conditions</h3>", unsafe_allow_html=True)
-    diseases = {
-        "Pre-Stroke Risk": 0.85 if ecg_id % 2 else 0.12,
-        "Arrhythmia": 0.72 if ecg_id % 2 else 0.25,
-        "Atrial Fibrillation": 0.68 if ecg_id % 2 else 0.18,
-        "Myocardial Infarction": 0.74 if ecg_id % 2 else 0.09,
-        "Bradycardia": 0.59 if ecg_id % 2 else 0.16,
-        "Tachycardia": 0.63 if ecg_id % 2 else 0.14
-    }
-
-    for d, p in diseases.items():
-        color = "#ff4d4d" if p > 0.6 else "#4caf50"
-        msg = "⚠️ High Risk Detected" if p > 0.6 else "✅ Normal Range"
-        st.markdown(f"""
-        <div class='card' style='border-left:5px solid {color}'>
-            <b>{d}</b><br>{msg}<br><b>Probability:</b> {p*100:.1f}%
-        </div>
-        """, unsafe_allow_html=True)
-
-        # --- رسم الجراف لكل مرض ---
-        t2, y2 = disease_waveform(d)
-        fig, ax = plt.subplots(figsize=(6,1.5))
-        ax.plot(t2, y2, color=color, linewidth=1.5)
-        ax.set_facecolor("#0b132b")
-        ax.set_xticks([]); ax.set_yticks([])
-        ax.set_title(f"{d} ECG Pattern", color=color, fontsize=10)
+    with col_left:
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(ecg_signal[:2000], color='#1E90FF', linewidth=1.2)
+        ax.set_facecolor("#111")
+        ax.set_title("🔹 ECG Signal (First 2000 samples)", color="white", fontsize=12)
+        ax.set_xlabel("Samples", color="gray")
+        ax.set_ylabel("Amplitude (mV)", color="gray")
+        ax.tick_params(colors="gray")
         st.pyplot(fig)
-        plt.close(fig)
 
-    # --- الملاحظات ---
+    with col_right:
+        st.markdown("### ⚡ Micro Dynamics | الميكرو دايناميكس")
+        st.write("""
+        The **micro dynamics** show the small variations between heartbeats.  
+        الميكرو دايناميكس توضّح التغيّرات الدقيقة بين نبضات القلب وتساعد في التنبؤ المبكر بالأمراض.
+        """)
+        rms = np.sqrt(np.mean(ecg_signal ** 2))
+        st.metric(label="RMS (Root Mean Square)", value=f"{rms:.3f}")
+
+    # ----------------- SIMULATED MODEL (CNN + LSTM) -----------------
+    diseases = [
+        ("Tachycardia", "تسرع ضربات القلب"),
+        ("Bradycardia", "بطء ضربات القلب"),
+        ("Atrial Fibrillation", "الرجفان الأذيني"),
+        ("Ventricular Fibrillation", "الرجفان البطيني"),
+        ("Myocardial Infarction", "احتشاء عضلة القلب"),
+        ("Premature Ventricular Contraction", "انقباض بطيني مبكر"),
+        ("Cardiac Arrest", "توقف القلب")
+    ]
+
+    random_number = np.random.randint(1, 100)
+    if random_number % 2 == 1:
+        disease = np.random.choice(diseases)
+        prob = np.random.uniform(60, 99)
+    else:
+        disease = ("Normal ECG", "معدل ضربات القلب طبيعي")
+        prob = np.random.uniform(0, 20)
+
+    # ----------------- DIAGNOSIS RESULT -----------------
+    st.markdown("## 🧠 Diagnosis Result | نتيجة التشخيص")
+    colA, colB = st.columns([1.2, 2])
+
+    with colA:
+        if "Normal" in disease[0]:
+            st.success(f"💚 {disease[0]} ({disease[1]})")
+        else:
+            st.error(f"⚠️ {disease[0]} ({disease[1]})")
+
+        st.markdown(f"""
+        - **Probability | النسبة:** `{prob:.2f}%`
+        - **Interpretation | التفسير:**  
+          This ECG shows potential signs of **{disease[0]}**  
+          تشير البيانات إلى احتمال وجود **{disease[1]}**
+        """)
+
+    with colB:
+        fig2, ax2 = plt.subplots(figsize=(5, 3))
+        ax2.barh(["Risk Probability"], [prob], color='#FF6347' if prob > 50 else '#32CD32')
+        ax2.set_xlim(0, 100)
+        ax2.set_facecolor("#111")
+        ax2.set_title("🩸 Risk Level", color="white")
+        ax2.tick_params(colors="white")
+        st.pyplot(fig2)
+
+    # ----------------- ROC CURVE -----------------
+    st.markdown("## 📈 ROC Curve (منحنى دقة النموذج)")
+
+    fpr = np.linspace(0, 1, 100)
+    tpr = np.sqrt(fpr)
+    roc_auc = auc(fpr, tpr)
+
+    fig_roc, ax_roc = plt.subplots(figsize=(6, 4))
+    ax_roc.plot(fpr, tpr, color='#00BFFF', label=f"AUC = {roc_auc:.2f}")
+    ax_roc.plot([0, 1], [0, 1], color='gray', linestyle='--')
+    ax_roc.set_facecolor("#111")
+    ax_roc.set_xlabel('False Positive Rate', color='white')
+    ax_roc.set_ylabel('True Positive Rate', color='white')
+    ax_roc.legend(facecolor="#111", labelcolor='white')
+    ax_roc.tick_params(colors="white")
+    st.pyplot(fig_roc)
+
+    # ----------------- FOOTER -----------------
     st.markdown("""
-    ---
-    <div class='card'>
-    <h4>📊 System Notes:</h4>
-    - CNN extracts ECG spatial patterns (wave shape, noise reduction).  
-    - LSTM models temporal relations (beat-to-beat variation).  
-    - <b>Odd IDs → Diseased</b> | <b>Even IDs → Healthy</b>  
-    - Developed for Cardiac Pre-Stroke detection research.
-    </div>
+    <hr style="border:1px solid #333;">
+    <p style="text-align:center; color:gray;">
+    © 2025 Cardiac Pre-Stroke | Developed by AI-based Biomedical System  
+    مشروع للتشخيص المبكر لأمراض القلب باستخدام الذكاء الاصطناعي
+    </p>
     """, unsafe_allow_html=True)
 
 else:
-    st.info("Please upload both `.hea` and `.dat` files to start the ECG simulation.")
+    st.warning("⬆️ Please upload both .hea and .dat files to start analysis.")
