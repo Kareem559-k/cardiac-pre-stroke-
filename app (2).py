@@ -5,12 +5,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from io import BytesIO
 import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 
 # ----------------------------------------------------------
-# Draw Heart Cover Image (replace it with your own function)
+# Heart cover image
 # ----------------------------------------------------------
 def make_heart_png(width=600, height=300, fill_color="#eef6ff"):
     fig, ax = plt.subplots(figsize=(6, 3))
@@ -24,14 +23,27 @@ def make_heart_png(width=600, height=300, fill_color="#eef6ff"):
     return buf
 
 # ----------------------------------------------------------
-# Confusion Matrix Heatmap
+# Confusion Matrix WITHOUT Seaborn
 # ----------------------------------------------------------
 def plot_confusion_matrix(conf_matrix):
     fig, ax = plt.subplots(figsize=(4, 3))
-    sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", ax=ax)
+
+    im = ax.imshow(conf_matrix, cmap="Blues")
+
+    # Write numbers inside each cell
+    for i in range(conf_matrix.shape[0]):
+        for j in range(conf_matrix.shape[1]):
+            ax.text(j, i, str(conf_matrix[i, j]),
+                    ha="center", va="center", color="white", fontsize=10)
+
+    ax.set_xticks([0, 1])
+    ax.set_yticks([0, 1])
+
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     ax.set_title("Confusion Matrix")
+
+    fig.colorbar(im)
 
     buf = BytesIO()
     plt.tight_layout()
@@ -63,25 +75,25 @@ def plot_roc_curve(y_true, y_scores):
     return buf, roc_auc
 
 # ----------------------------------------------------------
-# START STREAMLIT APP
+# Streamlit App
 # ----------------------------------------------------------
 st.title("Cardiac Pre-Stroke – PDF Report Generator")
 
-lang = "English"  # ثابت للتجربة
-pdf_figs = {}      # لو عندك صور حطها هنا: pdf_figs["Figure 1"] = buffer_image
+lang = "English"
+pdf_figs = {}
 
-# مثال بيانات — بدّلهم ببيانات الموديل
+# Your real model data (replace them with your actual values)
 conf_matrix = np.array([[631, 336],
                         [4, 3029]])
 
-y_true = np.array([0, 1, 1, 0, 1, 1, 0])  # Example
-y_scores = np.array([0.2, 0.8, 0.95, 0.3, 0.9, 0.87, 0.4])  # Example
+y_true = np.array([0, 1, 1, 0, 1, 1, 0])  
+y_scores = np.array([0.2, 0.8, 0.95, 0.3, 0.9, 0.87, 0.4])
 
 cm_buf = plot_confusion_matrix(conf_matrix)
 roc_buf, roc_auc_value = plot_roc_curve(y_true, y_scores)
 
 # ----------------------------------------------------------
-# Generate PDF
+# PDF Builder
 # ----------------------------------------------------------
 st.markdown("### 📥 Download Report")
 
@@ -131,29 +143,16 @@ if st.button("📄 Generate & Download Report"):
         story.append(Spacer(1, 20))
         story.append(img_cover)
     except:
-        story.append(Paragraph("(Heart image could not load)", normal))
+        story.append(Paragraph("(Heart image error)", normal))
 
     story.append(PageBreak())
-
-    # ---------- FIGURES ----------
-    for name, img_buf in pdf_figs.items():
-        story.append(Paragraph(f"<b>{name}</b>", styles["Heading3"]))
-        img_buf.seek(0)
-
-        try:
-            story.append(RLImage(img_buf, width=450, height=250))
-        except:
-            story.append(Paragraph("(Image failed to load)", normal))
-
-        story.append(Spacer(1, 12))
 
     # ---------- MODEL PERFORMANCE ----------
     story.append(Paragraph("<b>Model Performance Report</b>", styles["Heading2"]))
     story.append(Spacer(1, 12))
 
-    # Accuracy
     story.append(Paragraph("Overall Accuracy: 0.9150", normal))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 12))
 
     # Classification Report
     story.append(Paragraph("<b>Classification Report:</b>", styles["Heading3"]))
@@ -171,12 +170,12 @@ weighted avg   0.923     0.915     0.908      4000
     story.append(Paragraph(f"<pre>{class_report_text}</pre>", normal))
     story.append(Spacer(1, 20))
 
-    # ---------- CONFUSION MATRIX IMAGE ----------
+    # ---------- CONFUSION MATRIX ----------
     story.append(Paragraph("<b>Confusion Matrix Heatmap:</b>", styles["Heading3"]))
     try:
         story.append(RLImage(cm_buf, width=420, height=300))
     except:
-        story.append(Paragraph("(Matrix image error)", normal))
+        story.append(Paragraph("(Confusion matrix error)", normal))
 
     story.append(Spacer(1, 20))
 
