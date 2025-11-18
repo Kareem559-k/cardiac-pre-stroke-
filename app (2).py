@@ -289,5 +289,7 @@ with tab7:
         buffer.seek(0)
         st.download_button("⬇ Download PDF Report", data=buffer.getvalue(), file_name="Cardiac_PreStroke_Report.pdf", mime="application/pdf")
 
+if uploaded_files:  # أو الشرط الصحيح بتاعك
+    # كل Tab 7 والكود هنا
 else:
     st.warning("⬆ Upload both .hea and .dat files." if lang=="English" else "⬆ من فضلك ارفع ملفي .hea و .dat")
