@@ -10,25 +10,7 @@ import random, re
 from scipy.signal import find_peaks, spectrogram
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from PIL import Image, ImageDraw
-
-# ---------------- Page & Session init ----------------
-st.set_page_config(page_title="Cardiac Pre-Stroke", page_icon="🩺", layout="wide")
-if "page" not in st.session_state:
-    st.session_state["page"] = "login"
-if "user_name" not in st.session_state:
-    st.session_state["user_name"] = ""
-if "lang" not in st.session_state:
-    st.session_state["lang"] = "English"
-if "patient" not in st.session_state:
-    st.session_state["patient"] = {"name": "", "age": None, "gender": ""}
-
-# ---------------- Styles ----------------
-st.markdown("""
-<style>
+from reportlab.lib.pagesizes import 
 body {background-color: #f4f7fb; color: #0b2b47}
 .header-card {background: linear-gradient(90deg,#e9f4ff,#ffffff); padding:18px; border-radius:12px; border:1px solid #e1e7ee}
 .card {background:white; padding:18px; border-radius:12px; box-shadow: 0 6px 20px rgba(11,43,71,0.06);}
