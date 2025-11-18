@@ -183,62 +183,83 @@ if hea_file and dat_file:
         st.pyplot(fig6)
         pdf_figs["ROC Curve"] = fig_to_bytes(fig6)
 
-    # ---- Tab7: Complete Diagnosis ----
-    with tab7:
-        st.markdown("### Complete Diagnosis of the Condition" if lang=="English" else "### التشخيص الكامل للحالة")
-        colL, colR = st.columns([1.6,1])
-        with colL:
-            title_txt = f"💚 {disease[0]} — Risk {prob:.1f}%" if is_healthy else f"⚠ {disease[0]} — Risk {prob:.1f}%"
-            st.success(title_txt) if is_healthy else st.error(title_txt)
-            st.markdown(f"🟢 Low short-term stroke risk." if is_healthy else f"🔴 Possible stroke in ~{days_left} days.")
-        with colR:
-            # Risk bar chart (Matplotlib)
-            fig_bar, ax_bar = plt.subplots(figsize=(5,1.6))
-            ax_bar.barh([0],[prob], color=color, height=0.6)
-            ax_bar.set_xlim(0,100)
-            ax_bar.set_yticks([])
-            for spine in ax_bar.spines.values(): spine.set_visible(False)
-            ax_bar.text(prob-3,0,f"{prob:.1f}%", color='white', fontweight='bold', va='center')
-            st.pyplot(fig_bar)
-            pdf_figs["Diagnosis Risk Bar"] = fig_to_bytes(fig_bar)
+    # --- Tab7: Complete Diagnosis (Enhanced) ---
+with tab7:
+    st.markdown("### Complete Diagnosis of the Condition" if lang=="English" else "### التشخيص الكامل للحالة")
+    colL, colR = st.columns([1.6,1])
 
-            # Risk factors
-            factors = ["Age","Hypertension","Diabetes","Smoking","Cholesterol"]
-            weights = np.clip(np.array([random.uniform(0,1) for _ in factors])*(prob/100)*100,5,100)
-            fig_rf, ax_rf = plt.subplots(figsize=(5,3))
-            ax_rf.barh(factors, weights, color='#6a9bd8')
-            ax_rf.set_xlim(0,100)
-            ax_rf.invert_yaxis()
-            st.pyplot(fig_rf)
-            pdf_figs["Risk Factors"] = fig_to_bytes(fig_rf)
+    # ---- Left Column: Text Summary + Mini ECG ----
+    with colL:
+        title_txt = f"💚 {disease[0]} — Risk {prob:.1f}%" if is_healthy else f"⚠ {disease[0]} — Risk {prob:.1f}%"
+        st.success(title_txt) if is_healthy else st.error(title_txt)
 
-        # ------- PDF Report -------
-        st.markdown("### 📥 Download PDF Report")
-        if st.button("📄 Generate & Download Report"):
-            buffer = BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30,leftMargin=30, topMargin=30,bottomMargin=18)
-            styles = getSampleStyleSheet()
-            title_style = ParagraphStyle('TitleCenter', parent=styles['Title'], alignment=1, fontSize=20, textColor=colors.HexColor("#1E90FF"))
-            normal = styles["Normal"]
-            story=[]
-            heart_img_buf = make_heart_png(600,300)
-            story.append(Spacer(1,40))
-            story.append(Paragraph("🩺 <b>Cardiac Pre-Stroke</b>", title_style))
-            story.append(Spacer(1,10))
-            story.append(RLImage(heart_img_buf, width=420, height=220))
-            story.append(PageBreak())
-            for name,img_buf in pdf_figs.items():
-                story.append(Paragraph(f"<b>{name}</b>", styles["Heading3"]))
-                img_buf.seek(0)
-                story.append(RLImage(img_buf, width=450,height=250))
-                story.append(Spacer(1,12))
-            story.append(Paragraph(f"Disease: {disease[0]}", styles["Normal"]))
-            story.append(Paragraph(f"Risk Probability: {prob:.2f}%", styles["Normal"]))
-            if days_left: story.append(Paragraph(f"Predicted stroke in: {days_left} days", styles["Normal"]))
-            else: story.append(Paragraph("Short-term stroke risk: Low", styles["Normal"]))
-            doc.build(story)
-            buffer.seek(0)
-            st.download_button("⬇ Download PDF Report", data=buffer.getvalue(), file_name="Cardiac_PreStroke_Report.pdf", mime="application/pdf")
+        st.markdown(f"🟢 Low short-term stroke risk." if is_healthy else f"🔴 Possible stroke in ~{days_left} days.")
+        recommendation = ("Recommendation: visit a cardiologist for full assessment."
+                          if lang=="English" else "التوصية: راجع طبيب قلب للتقييم الكامل.")
+        st.info(recommendation)
 
-else:
-    st.warning("⬆ Upload both .hea and .dat files to begin analysis." if lang=="English" else "⬆ من فضلك ارفع ملفي .hea و .dat لبدء التحليل.")
+        # Mini ECG waveform
+        mini_len = min(len(ecg_signal), 500)
+        fig_ecg_mini, ax_ecg_mini = plt.subplots(figsize=(8,1.5))
+        ax_ecg_mini.plot(ecg_signal[:mini_len], color='#1E90FF', linewidth=1.5)
+        ax_ecg_mini.set_xticks([])
+        ax_ecg_mini.set_yticks([])
+        for spine in ax_ecg_mini.spines.values(): spine.set_visible(False)
+        st.pyplot(fig_ecg_mini)
+        pdf_figs["Mini ECG"] = fig_to_bytes(fig_ecg_mini)
+
+    # ---- Right Column: Gauge + Risk Factors ----
+    with colR:
+        # Gauge Chart for Risk
+        fig_gauge, ax_gauge = plt.subplots(figsize=(5,3))
+        ax_gauge.barh([0],[prob], color=color, height=0.6)
+        ax_gauge.set_xlim(0,100)
+        ax_gauge.set_yticks([])
+        ax_gauge.set_facecolor('#f0f0f0')
+        for spine in ax_gauge.spines.values(): spine.set_visible(False)
+        ax_gauge.text(prob-3,0,f"{prob:.1f}%", color='white', fontweight='bold', va='center', fontsize=14)
+        st.pyplot(fig_gauge)
+        pdf_figs["Gauge Risk"] = fig_to_bytes(fig_gauge)
+
+        # Risk Factors
+        factors = ["Age","Hypertension","Diabetes","Smoking","Cholesterol"]
+        weights = np.clip(np.array([random.uniform(0,1) for _ in factors])*(prob/100)*100,5,100)
+        fig_rf, ax_rf = plt.subplots(figsize=(5,3))
+        bars = ax_rf.barh(factors, weights, color=['#FF4C4C','#FF7F50','#FFD700','#00BFFF','#32CD32'])
+        ax_rf.set_xlim(0,100)
+        ax_rf.invert_yaxis()
+        for bar in bars:
+            width = bar.get_width()
+            ax_rf.text(width+2, bar.get_y()+bar.get_height()/2, f'{width:.0f}%', va='center', fontweight='bold')
+        st.pyplot(fig_rf)
+        pdf_figs["Risk Factors Detailed"] = fig_to_bytes(fig_rf)
+
+    # ---- PDF Download ----
+    st.markdown("### 📥 Download PDF Report")
+    if st.button("📄 Generate & Download Report"):
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30,leftMargin=30, topMargin=30,bottomMargin=18)
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('TitleCenter', parent=styles['Title'], alignment=1, fontSize=20, textColor=colors.HexColor("#1E90FF"))
+        story=[]
+        heart_img_buf = make_heart_png(600,300)
+        story.append(Spacer(1,40))
+        story.append(Paragraph("🩺 <b>Cardiac Pre-Stroke</b>", title_style))
+        story.append(Spacer(1,10))
+        story.append(RLImage(heart_img_buf, width=420, height=220))
+        story.append(PageBreak())
+        for name,img_buf in pdf_figs.items():
+            story.append(Paragraph(f"<b>{name}</b>", styles["Heading3"]))
+            img_buf.seek(0)
+            story.append(RLImage(img_buf, width=450,height=250))
+            story.append(Spacer(1,12))
+        story.append(Paragraph(f"Disease: {disease[0]}", styles["Normal"]))
+        story.append(Paragraph(f"Risk Probability: {prob:.2f}%", styles["Normal"]))
+        if days_left: story.append(Paragraph(f"Predicted stroke in: {days_left} days", styles["Normal"]))
+        else: story.append(Paragraph("Short-term stroke risk: Low", styles["Normal"]))
+        doc.build(story)
+        buffer.seek(0)
+        st.download_button("⬇ Download PDF Report", data=buffer.getvalue(), file_name="Cardiac_PreStroke_Report.pdf", mime="application/pdf")
+
+
+    
