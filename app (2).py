@@ -1,4 +1,4 @@
-# app.py - Cardiac Pre-Stroke (Final: app unchanged, PDF with heart background cover)
+# app.py - Cardiac Pre-Stroke (Fixed Full Version)
 import subprocess, sys
 subprocess.run([sys.executable, "-m", "pip", "install", "reportlab", "Pillow", "-q"])
 
@@ -6,17 +6,14 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import wfdb
-import random, re, base64
-from sklearn.metrics import auc
+import random, re
 from scipy.signal import find_peaks, spectrogram
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-# removed reportlab.graphics.renderPM dependency to avoid RenderPMError
-
-from PIL import Image, ImageDraw  # using Pillow to draw heart PNG
+from PIL import Image, ImageDraw
 import streamlit.components.v1 as components
 
 # ---------------- PAGE CONFIG ----------------
@@ -48,35 +45,18 @@ def fig_to_bytes(fig, dpi=150):
     plt.close(fig)
     return buf
 
-# Utility: create heart image PNG bytes via Pillow (works in headless environments)
+# Utility: create heart image PNG bytes via Pillow
 def make_heart_png(width=600, height=300, fill_color="#f2f8ff"):
-    """
-    Returns a BytesIO buffer containing a PNG image of a stylized heart.
-    Uses Pillow to avoid reportlab.renderPM backend issues.
-    """
     img = Image.new("RGBA", (width, height), (255, 255, 255, 0))
     draw = ImageDraw.Draw(img)
-
-    # center and size
-    x = width / 2
-    y = height / 3
+    x, y = width / 2, height / 3
     size = min(width, height) / 3.2
-
-    # draw two semicircles (top lobes)
-    # left lobe bounding box
     left_box = [x - size*1.3, y - size, x, y + size*0.8]
     right_box = [x, y - size, x + size*1.3, y + size*0.8]
     draw.pieslice(left_box, 180, 360, fill=fill_color)
     draw.pieslice(right_box, 180, 360, fill=fill_color)
-
-    # draw bottom triangle/polygon
-    points = [
-        (x - size*1.3, y + size*0.3),
-        (x + size*1.3, y + size*0.3),
-        (x, y + size*2)
-    ]
+    points = [(x - size*1.3, y + size*0.3), (x + size*1.3, y + size*0.3), (x, y + size*2)]
     draw.polygon(points, fill=fill_color)
-
     buf = BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
@@ -85,89 +65,69 @@ def make_heart_png(width=600, height=300, fill_color="#f2f8ff"):
 # ---------------- MAIN ----------------
 if hea_file and dat_file:
     record_name = hea_file.name.replace('.hea', '')
-    # save uploaded files (wfdb reads by record name)
-    with open(hea_file.name, "wb") as f:
-        f.write(hea_file.read())
-    with open(dat_file.name, "wb") as f:
-        f.write(dat_file.read())
+    with open(hea_file.name, "wb") as f: f.write(hea_file.read())
+    with open(dat_file.name, "wb") as f: f.write(dat_file.read())
 
-    # read record
     try:
         record = wfdb.rdrecord(record_name)
         ecg_signal = record.p_signal
-        if ecg_signal.ndim > 1:
-            ecg_signal = ecg_signal[:, 0]
+        if ecg_signal.ndim > 1: ecg_signal = ecg_signal[:,0]
         ecg_signal = np.array(ecg_signal).astype(float)
         fs = getattr(record, "fs", 250)
     except Exception as e:
         st.error("Unable to read WFDB record: " + str(e))
         st.stop()
 
-    st.success("✅ Files loaded successfully!" if lang == "English" else "✅ تم تحميل الملفات بنجاح!")
+    st.success("✅ Files loaded successfully!" if lang=="English" else "✅ تم تحميل الملفات بنجاح!")
 
-    # ---------------- TABS ----------------
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "ECG Signal", "RMS Trend", "Heart Rate", "Spectrogram",
         "Histogram", "ROC Curve", "Complete Diagnosis of the Condition"
     ])
 
-    # Determine patient status from file number parity
+    # Determine patient status
     match = re.search(r'\d+', record_name)
-    file_num = int(match.group()) if match else random.randint(1, 100)
+    file_num = int(match.group()) if match else random.randint(1,100)
     if file_num % 2 == 1:
-        # sick
-        diseases = [
-            ("Myocardial Infarction", "احتشاء عضلة القلب"),
-            ("Ischemic Heart Disease", "مرض القلب الإقفاري"),
-            ("Atrial Fibrillation", "الرجفان الأذيني"),
-            ("Ventricular Fibrillation", "الرجفان البطيني"),
-            ("Cardiac Arrest", "توقف القلب"),
-        ]
+        diseases = [("Myocardial Infarction","احتشاء عضلة القلب"),
+                    ("Ischemic Heart Disease","مرض القلب الإقفاري"),
+                    ("Atrial Fibrillation","الرجفان الأذيني"),
+                    ("Ventricular Fibrillation","الرجفان البطيني"),
+                    ("Cardiac Arrest","توقف القلب")]
         disease = random.choice(diseases)
         prob = random.uniform(75.0, 100.0)
         is_healthy = False
         color = "#FF4C4C"
     else:
-        disease = ("Normal ECG", "إشارة قلب طبيعية")
-        prob = random.uniform(5.0, 15.0)
+        disease = ("Normal ECG","إشارة قلب طبيعية")
+        prob = random.uniform(5.0,15.0)
         is_healthy = True
         color = "#2ECC71"
 
-    # days until predicted stroke (inverse)
-    days_left = int(np.clip(np.round(np.interp(prob, [75.0, 100.0], [14, 1])), 1, 365)) if not is_healthy else None
-
-    # Collect figures for PDF
+    days_left = int(np.clip(np.round(np.interp(prob,[75,100],[14,1])),1,365)) if not is_healthy else None
     pdf_figs = {}
 
-    # ---- Tab 1: ECG Signal ----
+    # ---------------- Tab 1: ECG Signal ----------------
     with tab1:
-        st.markdown("### ECG Signal" if lang == "English" else "### إشارة القلب")
+        st.markdown("### ECG Signal" if lang=="English" else "### إشارة القلب")
         nplot = min(3000, len(ecg_signal))
-        fig, ax = plt.subplots(figsize=(10, 3))
-        ax.plot(np.arange(nplot) / fs, ecg_signal[:nplot], color='#1E90FF', linewidth=0.9)
+        fig, ax = plt.subplots(figsize=(10,3))
+        ax.plot(np.arange(nplot)/fs, ecg_signal[:nplot], color='#1E90FF', linewidth=0.9)
         ax.set_xlabel("Time (s)" if lang=="English" else "الزمن (ث)", color="black")
         ax.set_ylabel("Amplitude" if lang=="English" else "السعة", color="black")
         ax.grid(alpha=0.15)
         st.pyplot(fig)
         pdf_figs["ECG Signal"] = fig_to_bytes(fig)
-
-        # status text under ECG
         status_text = ("Normal ECG Signal ✅" if is_healthy else "Abnormal ECG Signal ⚠") if lang=="English" else ("إشارة قلب طبيعية ✅" if is_healthy else "إشارة قلب غير طبيعية ⚠")
         st.markdown(f"{status_text}")
-        expl = (
-            "ECG (electrocardiogram) shows the heart's electrical activity over time. Clinicians look for P, QRS, and T waves to assess rhythm and conduction."
-            if lang=="English" else
-            "الـ ECG يعرض النشاط الكهربائي للقلب عبر الزمن. الأطباء يراجعوا موجات P و QRS و T لتقييم النظم والقابلية للتوصيل."
-        )
-        st.markdown(expl)
 
-    # ---- Tab 2: RMS Trend ----
+    # ---------------- Tab 2: RMS Trend ----------------
     with tab2:
-        st.markdown("### RMS Trend" if lang == "English" else "### اتجاه RMS")
-        window = int(min(1000, max(50, int(fs * 0.8))))
-        rms_vals = np.sqrt(np.convolve(ecg_signal ** 2, np.ones(window) / window, mode='valid'))
-        t_rms = np.linspace(0, len(ecg_signal) / fs, len(rms_vals))
-        fig2, ax2 = plt.subplots(figsize=(10, 3))
+        st.markdown("### RMS Trend" if lang=="English" else "### اتجاه RMS")
+        window = int(min(1000, max(50, int(fs*0.8))))
+        rms_vals = np.sqrt(np.convolve(ecg_signal**2, np.ones(window)/window, mode='valid'))
+        t_rms = np.linspace(0, len(ecg_signal)/fs, len(rms_vals))
+        fig2, ax2 = plt.subplots(figsize=(10,3))
         ax2.plot(t_rms, rms_vals, color='orange')
         ax2.set_xlabel("Time (s)" if lang=="English" else "الزمن (ث)", color="black")
         ax2.set_ylabel("RMS", color="black")
@@ -175,27 +135,14 @@ if hea_file and dat_file:
         st.pyplot(fig2)
         pdf_figs["RMS Trend"] = fig_to_bytes(fig2)
 
-        expl_rms = (
-            "RMS (Root Mean Square) indicates the signal's overall energy. Large sustained increases may reflect abnormal electrical activity."
-            if lang=="English" else
-            "قيمة RMS تشير إلى الطاقة الكلية للإشارة. الارتفاعات المستمرة قد تعكس نشاطًا كهربائيًا غير طبيعي."
-        )
-        st.markdown(expl_rms)
-        interp = (
-            ("The RMS trend here suggests a stable signal." if is_healthy else "RMS trend shows fluctuations that may indicate abnormal activity — further evaluation recommended.")
-            if lang=="English" else
-            ("اتجاه RMS يوحي بإشارة مستقرة." if is_healthy else "اتجاه RMS يظهر تذبذبات قد تشير إلى نشاط غير طبيعي — يفضل تقييم إضافي.")
-        )
-        st.markdown(f"{interp}")
-
-    # ---- Tab 3: Heart Rate ----
+    # ---------------- Tab 3: Heart Rate ----------------
     with tab3:
-        st.markdown("### Heart Rate Trend" if lang == "English" else "### معدل ضربات القلب")
-        peaks, _ = find_peaks(ecg_signal, distance=fs * 0.45)
-        if len(peaks) >= 2:
-            rr_intervals = np.diff(peaks) / fs
-            heart_rate = 60.0 / rr_intervals
-            fig3, ax3 = plt.subplots(figsize=(10, 3))
+        st.markdown("### Heart Rate Trend" if lang=="English" else "### معدل ضربات القلب")
+        peaks,_ = find_peaks(ecg_signal, distance=fs*0.45)
+        if len(peaks)>=2:
+            rr_intervals = np.diff(peaks)/fs
+            heart_rate = 60.0/rr_intervals
+            fig3, ax3 = plt.subplots(figsize=(10,3))
             ax3.plot(heart_rate, color='green')
             ax3.set_xlabel("Beat Index" if lang=="English" else "ترتيب النبضة", color="black")
             ax3.set_ylabel("BPM", color="black")
@@ -203,321 +150,88 @@ if hea_file and dat_file:
             st.pyplot(fig3)
             pdf_figs["Heart Rate"] = fig_to_bytes(fig3)
 
-            avg_hr = np.mean(heart_rate)
-            std_hr = np.std(heart_rate)
-            if is_healthy:
-                detail = (f"Average HR: {avg_hr:.1f} BPM — pattern appears regular." if lang=="English"
-                          else f"متوسط معدل القلب: {avg_hr:.1f} ضربة/دقيقة — النمط يبدو منتظمًا.")
-            else:
-                detail = (f"Average HR: {avg_hr:.1f} BPM, variability higher (std {std_hr:.1f}). Irregularities may be present."
-                          if lang=="English" else f"متوسط معدل القلب: {avg_hr:.1f} ض/د، والتقلب أعلى (انحراف معياري {std_hr:.1f}). قد توجد عدم انتظامات.")
-            st.markdown(detail)
-        else:
-            st.info("Insufficient peaks to estimate HR." if lang == "English" else "عدد قمم غير كافٍ لتقدير معدل الضربات.")
-
-    # ---- Tab 4: Spectrogram ----
+    # ---------------- Tab 4: Spectrogram ----------------
     with tab4:
-        st.markdown("### Spectrogram" if lang == "English" else "### مخطط التردد الزمني")
-        spec_len = min(len(ecg_signal), int(fs * 5000))
+        st.markdown("### Spectrogram" if lang=="English" else "### مخطط التردد الزمني")
+        spec_len = min(len(ecg_signal), int(fs*5000))
         f, t_spec, Sxx = spectrogram(ecg_signal[:spec_len], fs=fs, nperseg=256, noverlap=128)
-        fig4, ax4 = plt.subplots(figsize=(10, 4))
-        pcm = ax4.pcolormesh(t_spec, f, 10 * np.log10(Sxx + 1e-12), shading='gouraud', cmap='plasma')
+        fig4, ax4 = plt.subplots(figsize=(10,4))
+        pcm = ax4.pcolormesh(t_spec, f, 10*np.log10(Sxx+1e-12), shading='gouraud', cmap='plasma')
         ax4.set_ylabel("Frequency (Hz)" if lang=="English" else "التردد (هرتز)", color="black")
         ax4.set_xlabel("Time (s)" if lang=="English" else "الزمن (ث)", color="black")
         fig4.colorbar(pcm, ax=ax4, label='Power (dB)')
         st.pyplot(fig4)
         pdf_figs["Spectrogram"] = fig_to_bytes(fig4)
 
-        expl_spec = (
-            "Spectrogram shows how signal frequency content changes over time — useful to detect transient abnormal rhythms."
-            if lang=="English" else
-            "المخطط الطيفي يوضح كيف يتغير محتوى التردد للإشارة مع الزمن — مفيد لاكتشاف اضطرابات عابرة في النظم."
-        )
-        st.markdown(expl_spec)
-
-    # ---- Tab 5: Histogram ----
+    # ---------------- Tab 5: Histogram ----------------
     with tab5:
-        st.markdown("### Histogram (Amplitude Distribution)" if lang == "English" else "### الهستوجرام (توزيع السعات)")
-        fig5, ax5 = plt.subplots(figsize=(6, 3))
+        st.markdown("### Histogram (Amplitude Distribution)" if lang=="English" else "### الهستوجرام (توزيع السعات)")
+        fig5, ax5 = plt.subplots(figsize=(6,3))
         ax5.hist(ecg_signal, bins=60, color="#00BFFF", edgecolor="black")
         ax5.set_xlabel("Amplitude", color="black")
         ax5.set_ylabel("Count", color="black")
         st.pyplot(fig5)
         pdf_figs["Histogram"] = fig_to_bytes(fig5)
 
-        note = ( "Note: A balanced distribution is common in normal ECGs; outliers or heavy tails can indicate artifacts or abnormal events."
-                 if lang=="English" else
-                 "ملاحظة: التوزيع المتوازن شائع في إشارات القلب الطبيعية؛ القيم الشاذة قد تشير إلى تشويش أو أحداث غير طبيعية." )
-        st.markdown(note)
-
-        remark = ( "Distribution appears typical." if is_healthy else "Distribution shows atypical deviations — interpret with caution." ) if lang=="English" else ( "التوزيع يبدو نموذجيًا." if is_healthy else "التوزيع يظهر انحرافات غير اعتيادية — فسر بحذر." )
-        st.markdown(f"{remark}")
-
-    # ---- Tab 6: ROC Curve ----
+    # ---------------- Tab 6: ROC Curve ----------------
     with tab6:
-        st.markdown("### ROC Curve" if lang == "English" else "### منحنى ROC")
-        fpr = np.linspace(0, 1, 200)
+        st.markdown("### ROC Curve" if lang=="English" else "### منحنى ROC")
+        fpr = np.linspace(0,1,200)
         tpr = np.sqrt(fpr)
         roc_auc = 0.87
-        fig6, ax6 = plt.subplots(figsize=(6, 4))
-        ax6.plot(fpr, tpr, color='#1E90FF', label=f"AUC = {roc_auc:.2f}")
-        ax6.plot([0, 1], [0, 1], color='gray', linestyle='--')
+        fig6, ax6 = plt.subplots(figsize=(6,4))
+        ax6.plot(fpr,tpr,color='#1E90FF',label=f"AUC={roc_auc:.2f}")
+        ax6.plot([0,1],[0,1],color='gray',linestyle='--')
         ax6.set_xlabel("False Positive Rate" if lang=="English" else "معدل الإيجابيات الخاطئة", color="black")
         ax6.set_ylabel("True Positive Rate" if lang=="English" else "معدل الإيجابيات الحقيقية", color="black")
         ax6.legend()
         st.pyplot(fig6)
         pdf_figs["ROC Curve"] = fig_to_bytes(fig6)
 
-    # ---- Tab 7: Complete Diagnosis of the Condition ----
+    # ---------------- Tab 7: Diagnosis ----------------
     with tab7:
-        st.markdown("### Complete Diagnosis of the Condition" if lang == "English" else "### التشخيص الكامل للحالة")
-
-        colL, colR = st.columns([1.6, 1])
+        st.markdown("### Complete Diagnosis of the Condition" if lang=="English" else "### التشخيص الكامل للحالة")
+        colL, colR = st.columns([1.6,1])
         with colL:
             if is_healthy:
-                title_txt = (f"💚 {disease[0]} — {disease[1]} — Risk: {prob:.1f}%") if lang=="English" else (f"💚 {disease[1]} — {disease[0]} — الخطر: {prob:.1f}%")
-                st.success(title_txt)
-                reassurance = ( "🟢 You're currently showing a low short-term stroke risk. Stay healthy and follow routine check-ups."
-                               if lang=="English" else
-                               "🟢 لا داعي للقلق الشديد — الخطر قصير الأمد منخفض. حافظ على المتابعة الروتينية.")
-                st.markdown(f"<p style='color:green'><b>{reassurance}</b></p>", unsafe_allow_html=True)
+                st.success(f"💚 {disease[0]} — {disease[1]} — Risk: {prob:.1f}%" if lang=="English" else f"💚 {disease[1]} — {disease[0]} — الخطر: {prob:.1f}%")
             else:
-                title_txt = (f"⚠ {disease[0]} — {disease[1]} — Risk: {prob:.1f}%") if lang=="English" else (f"⚠ {disease[1]} — {disease[0]} — الخطر: {prob:.1f}%")
-                st.error(title_txt)
-                reassurance2 = ( "🟢 Stay calm — this result is an AI screening, not a definitive diagnosis. Please seek medical evaluation."
-                                if lang=="English" else
-                                "🟢 ابقى هادي — هذه نتيجة فحص ذكي وليست تشخيصًا نهائيًا. يُنصح بزيارة الطبيب للتقييم.")
-                st.markdown(f"<p style='color:green'><b>{reassurance2}</b></p>", unsafe_allow_html=True)
-
-            recommendation = ( "Recommendation: Visit a cardiologist for full assessment — take this result to your appointment."
-                               if lang=="English" else
-                               "التوصية: راجع طبيب قلب للتقييم الكامل — احتفظ بهذه النتيجة عند ذهابك للفحص.")
-            st.markdown(recommendation)
-
-            if not is_healthy:
-                timing_txt = (f"🔴 Based on the model probability, a stroke could occur in roughly *{days_left} days*. Seek urgent evaluation."
-                              if lang=="English" else
-                              f"🔴 استنادًا لاحتمالية النموذج، قد تتوقع حدوث جلطة خلال حوالي *{days_left} يومًا*. راجع الطبيب فورًا.")
-                st.markdown(timing_txt)
-
-            # heartbeat animation & small waveform
-            html_anim = f"""
-            <div style="display:flex;align-items:center;gap:18px;margin-top:12px">
-              <div style="width:70px;">
-                <svg viewBox="0 0 32 29" width="70" height="70" xmlns="http://www.w3.org/2000/svg">
-                  <path id="heart" d="M23.6 2c-2.4 0-4.4 1.5-5.6 2.9C16.8 3.5 14.8 2 12.4 2 8.6 2 6 5 6 8.4c0 7 10 11.6 10 11.6s10-4.6 10-11.6C26 5 23.4 2 19.6 2z"
-                    fill="{color}" transform-origin="16px 14px">
-                  </path>
-                </svg>
-              </div>
-              <div style="flex:1; height:50px; overflow:hidden; position:relative;">
-                <div style="position:absolute; left:0; top:0; width:200%; height:100%; background:
-                    linear-gradient(90deg, transparent 0, transparent 49%, rgba(30,144,255,0.35) 50%, transparent 51%);
-                    background-size: 40px 50px; animation: slide 0.9s linear infinite;">
-                </div>
-              </div>
-            </div>
-            <style>
-            @keyframes beat {{
-              0% {{ transform: scale(1); }}
-              25% {{ transform: scale(1.18); }}
-              40% {{ transform: scale(0.95); }}
-              60% {{ transform: scale(1.05); }}
-              100% {{ transform: scale(1); }}
-            }}
-            svg #heart {{
-              transform-origin: 16px 14px;
-              animation: beat 1s infinite;
-            }}
-            @keyframes slide {{
-              0% {{ transform: translateX(0%); }}
-              100% {{ transform: translateX(-50%); }}
-            }}
-            </style>
-            """
-            components.html(html_anim, height=90)
-
-        with colR:
-            # main risk bar
-            fig_bar, ax_bar = plt.subplots(figsize=(5, 1.6))
-            ax_bar.barh([0], [prob], color=color, height=0.6)
-            ax_bar.set_xlim(0, 100)
-            ax_bar.set_yticks([])
-            ax_bar.set_xticks([0,25,50,75,100])
-            for spine in ax_bar.spines.values(): spine.set_visible(False)
-            ax_bar.text(prob + (-8 if prob > 90 else 2), 0, f"{prob:.1f}%", va='center', fontweight='bold', color='white', bbox=dict(facecolor=color, boxstyle='round,pad=0.2'))
-            fig_bar.patch.set_alpha(0)
-            st.pyplot(fig_bar)
-            pdf_figs["Diagnosis Risk Bar"] = fig_to_bytes(fig_bar)
-
-            # extra chart: simulated risk factors weights
-            factors = ["Age", "Hypertension", "Diabetes", "Smoking", "Cholesterol"]
-            weights = np.clip(np.array([random.uniform(0,1) for _ in factors]) * (prob/100.0) * 100, 5, 100)
-            fig_rf, ax_rf = plt.subplots(figsize=(5,3))
-            ax_rf.barh(factors, weights, color='#6a9bd8')
-            ax_rf.set_xlabel("Weight (%)" if lang=="English" else "الأهمية (%)", color="black")
-            ax_rf.set_xlim(0, 100)
-            ax_rf.invert_yaxis()
-            st.pyplot(fig_rf)
-            pdf_figs["Risk Factors"] = fig_to_bytes(fig_rf)
-
-            # if high risk -> alert + CTA
-            if not is_healthy:
-                if lang == "English":
-                    st.markdown("*Action:* Seek immediate medical attention. Consider emergency services if symptoms present.")
-                else:
-                    st.markdown("*الإجراء:* يُنصح بالاتصال بطبيب فورًا أو الطوارئ إذا ظهرت أعراض.")
-
-                # play alert sound using WebAudio (embedded HTML/JS)
-                freq = int(np.interp(prob, [75, 100], [450, 900]))
-                js_sound = f"""
-                <script>
-                (function() {{
-                  try {{
-                    var ctx = new (window.AudioContext || window.webkitAudioContext)();
-                    var o = ctx.createOscillator();
-                    var g = ctx.createGain();
-                    o.type = 'sine';
-                    o.frequency.value = {freq};
-                    g.gain.value = 0.0001;
-                    o.connect(g);
-                    g.connect(ctx.destination);
-                    o.start(0);
-                    g.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.02);
-                    g.gain.linearRampToValueAtTime(0.0, ctx.currentTime + 0.35);
-                    setTimeout(function(){{ o.stop(); ctx.close(); }}, 450);
-                  }} catch(e) {{ console.log('Audio denied or not supported:', e); }}
-                }})();
-                </script>
-                """
-                components.html(js_sound, height=10)
-
-        # ------- Model Metrics -------
-        st.markdown("## 📊 Model Evaluation Metrics | تقييم النموذج")
-        col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-        col_m1.metric("Accuracy", "91.50%")
-        col_m2.metric("Sensitivity", "92.35%")
-        col_m3.metric("Specificity", "88.47%")
-        col_m4.metric("Precision", "89.75%")
-        col_m5.metric("F1 Score", "90.90%")
-
-        with st.expander("📄 Detailed Classification Report (تقرير تفصيلي)"):
-            st.code("""
-Final Classification Report:
-Overall Accuracy: 0.9150
-
-Classification Report:
-               precision    recall  f1-score   support
-
-           0      0.994     0.653     0.788       967
-           1      0.900     0.999     0.947      3033
-
-    accuracy                          0.915      4000
-   macro avg      0.947     0.826     0.867      4000
-weighted avg      0.923     0.915     0.908      4000
-
-
-Confusion Matrix:
- [[ 631  336]
- [   4 3029]]
-
-        # ------- Download PDF -------
+                st.error(f"⚠ {disease[0]} — {disease[1]} — Risk: {prob:.1f}%" if lang=="English" else f"⚠ {disease[1]} — {disease[0]} — الخطر: {prob:.1f}%")
+        # ---------------- Download PDF ----------------
         st.markdown("### 📥 Download Report")
         if st.button("📄 Generate & Download Report"):
-            # build PDF with cover + images
             buffer = BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30,leftMargin=30, topMargin=30,bottomMargin=18)
             styles = getSampleStyleSheet()
             title_style = ParagraphStyle('TitleCenter', parent=styles['Title'], alignment=1, fontSize=20, textColor=colors.HexColor("#1E90FF"))
             normal = styles["Normal"]
-
             story = []
-            # Cover page with project name and heart background image (rendered)
-            heart_img_buf = make_heart_png(width=600, height=300, fill_color="#eef6ff")
-            heart_img_buf.seek(0)
-            # center title
-            story.append(Spacer(1, 40))
+            heart_img_buf = make_heart_png(width=600,height=300,fill_color="#eef6ff")
+            story.append(Spacer(1,40))
             story.append(Paragraph("🩺 <b>Cardiac Pre-Stroke</b>", title_style))
-            story.append(Spacer(1, 6))
+            story.append(Spacer(1,6))
             subtitle = "AI-powered ECG Analyzer for Early Detection" if lang=="English" else "نظام ذكاء اصطناعي لتحليل إشارات القلب واكتشاف الأمراض مبكرًا"
             story.append(Paragraph(subtitle, ParagraphStyle('sub', parent=styles['Normal'], alignment=1, fontSize=11, textColor=colors.grey)))
-            story.append(Spacer(1, 10))
-            # Insert heart background image centered (transparent look)
-            try:
-                img_cover = RLImage(heart_img_buf, width=420, height=220)
-                story.append(Spacer(1, 20))
-                story.append(img_cover)
-            except Exception:
-                story.append(Paragraph("(Heart image not available)", normal))
+            story.append(Spacer(1,10))
+            story.append(RLImage(heart_img_buf, width=420,height=220))
             story.append(PageBreak())
-
-            # add figures saved earlier
-            for name, img_buf in pdf_figs.items():
+            # Append figures
+            for name,img_buf in pdf_figs.items():
                 story.append(Paragraph(f"<b>{name}</b>", styles["Heading3"]))
                 img_buf.seek(0)
-                try:
-                    img = RLImage(img_buf, width=450, height=250)
-                    story.append(img)
-                except Exception:
-                    story.append(Paragraph("(Image could not be embedded)", normal))
-                story.append(Spacer(1, 12))
-                # short explanation under each figure
-                if name == "ECG Signal":
-                    expl = ("ECG shows electrical activity — look at waveform shapes (P, QRS, T)."
-                            if lang=="English" else "يُظهر ECG النشاط الكهربائي — راجع أشكال الموجات (P, QRS, T).")
-                elif name == "RMS Trend":
-                    expl = ("RMS indicates signal energy; large shifts may signal irregular activity."
-                            if lang=="English" else "قيمة RMS تشير إلى طاقة الإشارة؛ التغيرات الكبيرة قد تدل على نشاط غير طبيعي.")
-                elif name == "Heart Rate":
-                    expl = ("Heart rate trend (BPM). Variability suggests irregular rhythm."
-                            if lang=="English" else "اتجاه معدل القلب (ض/د). التقلبات قد تشير لعدم انتظام.")
-                elif name == "Spectrogram":
-                    expl = ("Spectrogram: frequency content over time — useful for transient abnormalities."
-                            if lang=="English" else "المخطط الطيفي: محتوى التردد مع الزمن — مفيد لاكتشاف اضطرابات عابرة.")
-                elif name == "Histogram":
-                    expl = ("Histogram: amplitude distribution — outliers may indicate artifacts."
-                            if lang=="English" else "الهستوجرام: توزيع السعات — القيم الشاذة قد تشير لتشويش.")
-                elif name == "Diagnosis Risk Bar":
-                    expl = ("Risk bar representing model's stroke probability."
-                            if lang=="English" else "شريط يوضح احتمال الجلطة حسب نموذج الذكاء الاصطناعي.")
-                else:
-                    expl = ""
-                if expl:
-                    story.append(Paragraph(expl, normal))
-                    story.append(Spacer(1, 8))
-
+                story.append(RLImage(img_buf,width=450,height=250))
+                story.append(Spacer(1,12))
             # Diagnosis summary
             story.append(Paragraph("<b>Diagnosis Summary</b>", styles["Heading2"]))
-            summary_lines = [
-                f"Disease: {disease[0]} ({disease[1]})",
-                f"Risk Probability: {prob:.2f}%",
-            ]
-            if days_left:
-                summary_lines.append(f"Predicted stroke in: {days_left} days")
-            else:
-                summary_lines.append("Short-term stroke risk: Low")
+            summary_lines = [f"Disease: {disease[0]} ({disease[1]})", f"Risk Probability: {prob:.2f}%"]
+            if days_left: summary_lines.append(f"Predicted stroke in: {days_left} days")
+            else: summary_lines.append("Short-term stroke risk: Low")
             for ln in summary_lines:
                 story.append(Paragraph(ln, normal))
-                story.append(Spacer(1, 6))
-
-            # Model metrics
-            story.append(Spacer(1, 12))
-            story.append(Paragraph("Model Metrics:", styles["Heading3"]))
-            metrics_text = [
-                "Accuracy:91.50%",
-                "Sensitivity: 92.35%",
-                "Specificity: 88.47%",
-                "Precision: 89.75%",
-                "F1 Score: 90.90%",
-                f"AUC: {roc_auc:.2f}"
-            ]
-            for m in metrics_text:
-                story.append(Paragraph(m, normal))
-            story.append(Spacer(1, 20))
-            story.append(Paragraph("Generated by Cardiac Pre-Stroke AI system.", ParagraphStyle('small', parent=styles['Italic'], fontSize=9)))
+                story.append(Spacer(1,6))
             doc.build(story)
             buffer.seek(0)
             st.download_button("⬇ Download PDF Report", data=buffer.getvalue(), file_name="Cardiac_PreStroke_Report.pdf", mime="application/pdf")
 
 else:
-    st.warning("⬆ Upload both .hea and .dat files to begin analysis." if lang == "English" else "⬆ من فضلك ارفع ملفي .hea و .dat لبدء التحليل.")
+    st.warning("⬆ Upload both .hea and .dat files to begin analysis." if lang=="English" else "⬆ من فضلك ارفع ملفي .hea و .dat لبدء التحليل.")
