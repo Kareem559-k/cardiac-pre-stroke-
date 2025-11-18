@@ -1,4 +1,4 @@
-# app.py - Cardiac Pre-Stroke (Full Version)
+# app.py - Cardiac Pre-Stroke Full Version
 import subprocess, sys
 subprocess.run([sys.executable, "-m", "pip", "install", "reportlab", "Pillow", "wfdb", "-q"])
 
@@ -16,6 +16,12 @@ from reportlab.lib import colors
 from PIL import Image, ImageDraw
 import streamlit.components.v1 as components
 
+# ---------------- SESSION STATE ----------------
+if "page" not in st.session_state:
+    st.session_state["page"] = "login"
+if "user_name" not in st.session_state:
+    st.session_state["user_name"] = ""
+
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Cardiac Pre-Stroke", page_icon="🩺", layout="wide")
 
@@ -29,13 +35,6 @@ st.markdown("""
 
 # ---------------- LANGUAGE ----------------
 lang = st.radio("🌍 اختر اللغة | Choose Language:", ["English", "عربي"], horizontal=True)
-
-# ---------------- FILE UPLOAD ----------------
-col1, col2 = st.columns(2)
-with col1:
-    hea_file = st.file_uploader("📄 Upload .hea file", type=["hea"])
-with col2:
-    dat_file = st.file_uploader("📊 Upload .dat file", type=["dat"])
 
 # ---------------- UTILS ----------------
 def fig_to_bytes(fig, dpi=150):
@@ -62,230 +61,227 @@ def make_heart_png(width=600, height=300, fill_color="#f2f8ff"):
     buf.seek(0)
     return buf
 
-# ---------------- MAIN ----------------
-if hea_file and dat_file:
-    record_name = hea_file.name.replace('.hea','')
-    with open(hea_file.name,"wb") as f: f.write(hea_file.read())
-    with open(dat_file.name,"wb") as f: f.write(dat_file.read())
-    
-    # read record
-    try:
-        record = wfdb.rdrecord(record_name)
-        ecg_signal = record.p_signal
-        if ecg_signal.ndim>1: ecg_signal = ecg_signal[:,0]
-        ecg_signal = np.array(ecg_signal).astype(float)
-        fs = getattr(record,"fs",250)
-    except Exception as e:
-        st.error("Unable to read WFDB record: "+str(e))
-        st.stop()
-    st.success("✅ Files loaded successfully!" if lang=="English" else "✅ تم تحميل الملفات بنجاح!")
-
-    # ---------------- SIMULATED DIAGNOSIS ----------------
-    match = re.search(r'\d+', record_name)
-    file_num = int(match.group()) if match else random.randint(1,100)
-    if file_num %2==1:
-        diseases = [("Myocardial Infarction","احتشاء عضلة القلب"),("Atrial Fibrillation","الرجفان الأذيني"),
-                    ("Ventricular Fibrillation","الرجفان البطيني"),("Cardiac Arrest","توقف القلب")]
-        disease = random.choice(diseases)
-        prob = random.uniform(75.0,100.0)
-        is_healthy = False
-        color="#FF4C4C"
-    else:
-        disease = ("Normal ECG","إشارة قلب طبيعية")
-        prob = random.uniform(5.0,15.0)
-        is_healthy=True
-        color="#2ECC71"
-    days_left = int(np.clip(np.round(np.interp(prob,[75,100],[14,1])),1,365)) if not is_healthy else None
-
-    pdf_figs = {}
-
-    # ---------------- TABS ----------------
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "ECG Signal","RMS Trend","Heart Rate","Spectrogram","Histogram","Risk Overview","Complete Diagnosis"
-    ])
-
-    # ---- Tab 1: ECG ----
-    with tab1:
-        st.markdown("### ECG Signal" if lang=="English" else "### إشارة القلب")
-        nplot=min(3000,len(ecg_signal))
-        fig,ax=plt.subplots(figsize=(10,3))
-        ax.plot(np.arange(nplot)/fs,ecg_signal[:nplot],color='#1E90FF',linewidth=0.9)
-        ax.set_xlabel("Time (s)" if lang=="English" else "الزمن (ث)",color="black")
-        ax.set_ylabel("Amplitude" if lang=="English" else "السعة",color="black")
-        ax.grid(alpha=0.15)
-        st.pyplot(fig)
-        pdf_figs["ECG Signal"]=fig_to_bytes(fig)
-
-    # ---- Tab 2: RMS ----
-    with tab2:
-        st.markdown("### RMS Trend" if lang=="English" else "### اتجاه RMS")
-        window=int(min(1000,max(50,int(fs*0.8))))
-        rms_vals=np.sqrt(np.convolve(ecg_signal**2,np.ones(window)/window,mode='valid'))
-        t_rms=np.linspace(0,len(ecg_signal)/fs,len(rms_vals))
-        fig2,ax2=plt.subplots(figsize=(10,3))
-        ax2.plot(t_rms,rms_vals,color='orange')
-        ax2.set_xlabel("Time (s)" if lang=="English" else "الزمن (ث)",color="black")
-        ax2.set_ylabel("RMS",color="black")
-        ax2.grid(alpha=0.15)
-        st.pyplot(fig2)
-        pdf_figs["RMS Trend"]=fig_to_bytes(fig2)
-
-    # ---- Tab 3: Heart Rate ----
-    with tab3:
-        st.markdown("### Heart Rate Trend" if lang=="English" else "### معدل ضربات القلب")
-        peaks,_=find_peaks(ecg_signal,distance=fs*0.45)
-        if len(peaks)>=2:
-            rr_intervals=np.diff(peaks)/fs
-            heart_rate=60.0/rr_intervals
-            fig3,ax3=plt.subplots(figsize=(10,3))
-            ax3.plot(heart_rate,color='green')
-            ax3.set_xlabel("Beat Index" if lang=="English" else "ترتيب النبضة",color="black")
-            ax3.set_ylabel("BPM",color="black")
-            ax3.grid(alpha=0.15)
-            st.pyplot(fig3)
-            pdf_figs["Heart Rate"]=fig_to_bytes(fig3)
-
-    # ---- Tab 4: Spectrogram ----
-    with tab4:
-        st.markdown("### Spectrogram" if lang=="English" else "### مخطط التردد الزمني")
-        spec_len=min(len(ecg_signal),int(fs*5000))
-        f,t_spec,Sxx=spectrogram(ecg_signal[:spec_len],fs=fs,nperseg=256,noverlap=128)
-        fig4,ax4=plt.subplots(figsize=(10,4))
-        pcm=ax4.pcolormesh(t_spec,f,10*np.log10(Sxx+1e-12),shading='gouraud',cmap='plasma')
-        ax4.set_ylabel("Frequency (Hz)" if lang=="English" else "التردد (هرتز)",color="black")
-        ax4.set_xlabel("Time (s)" if lang=="English" else "الزمن (ث)",color="black")
-        fig4.colorbar(pcm,ax=ax4,label='Power (dB)')
-        st.pyplot(fig4)
-        pdf_figs["Spectrogram"]=fig_to_bytes(fig4)
-
-    # ---- Tab 5: Histogram ----
-    with tab5:
-        st.markdown("### Histogram (Amplitude Distribution)" if lang=="English" else "### الهستوجرام (توزيع السعات)")
-        fig5,ax5=plt.subplots(figsize=(6,3))
-        ax5.hist(ecg_signal,bins=60,color="#00BFFF",edgecolor="black")
-        ax5.set_xlabel("Amplitude",color="black")
-        ax5.set_ylabel("Count",color="black")
-        st.pyplot(fig5)
-        pdf_figs["Histogram"]=fig_to_bytes(fig5)
-
-    # ---- Tab 6: Risk Overview ----
-    with tab6:
-        st.markdown("### Risk Bar & Factors" if lang=="English" else "### شريط المخاطر والعوامل")
-        fig_bar,ax_bar=plt.subplots(figsize=(6,1.6))
-        ax_bar.barh([0],[prob],color=color,height=0.6)
-        ax_bar.set_xlim(0,100)
-        ax_bar.set_yticks([])
-        ax_bar.set_xticks([0,25,50,75,100])
-        for spine in ax_bar.spines.values(): spine.set_visible(False)
-        ax_bar.text(prob+(-8 if prob>90 else 2),0,f"{prob:.1f}%",va='center',fontweight='bold',color='white',bbox=dict(facecolor=color,boxstyle='round,pad=0.2'))
-        st.pyplot(fig_bar)
-        pdf_figs["Risk Bar"]=fig_to_bytes(fig_bar)
-
-    # ---- Tab 7: Complete Diagnosis & PDF ----
-    with tab7:
-        st.markdown("### Complete Diagnosis of the Condition" if lang == "English" else "### التشخيص الكامل للحالة")
-        colL, colR = st.columns([1.6, 1])
-        with colL:
-            if is_healthy:
-                title_txt = (f"💚 {disease[0]} — {disease[1]} — Risk: {prob:.1f}%") if lang=="English" else (f"💚 {disease[1]} — {disease[0]} — الخطر: {prob:.1f}%")
-                st.success(title_txt)
-                reassurance = ( "🟢 You're currently showing a low short-term stroke risk. Stay healthy and follow routine check-ups."
-                               if lang=="English" else
-                               "🟢 لا داعي للقلق الشديد — الخطر قصير الأمد منخفض. حافظ على المتابعة الروتينية.")
-                st.markdown(f"<p style='color:green'><b>{reassurance}</b></p>", unsafe_allow_html=True)
+# ---------------- LOGIN PAGE ----------------
+if st.session_state["page"] == "login":
+    st.markdown("### Login / Register" if lang=="English" else "### تسجيل الدخول / إنشاء حساب")
+    with st.form("login_form"):
+        name = st.text_input("Full Name" if lang=="English" else "الاسم الكامل")
+        phone = st.text_input("Phone Number" if lang=="English" else "رقم الهاتف")
+        email = st.text_input("Email" if lang=="English" else "البريد الإلكتروني")
+        password = st.text_input("Password" if lang=="English" else "كلمة السر", type="password")
+        submitted = st.form_submit_button("Register / Continue" if lang=="English" else "تسجيل / متابعة")
+        if submitted:
+            if name.strip()=="" or phone.strip()=="" or email.strip()=="" or password.strip()=="":
+                st.error("Please fill all fields." if lang=="English" else "يرجى ملء جميع الحقول.")
             else:
-                title_txt = (f"⚠ {disease[0]} — {disease[1]} — Risk: {prob:.1f}%") if lang=="English" else (f"⚠ {disease[1]} — {disease[0]} — الخطر: {prob:.1f}%")
-                st.error(title_txt)
-                reassurance2 = ( "🟢 Stay calm — this result is an AI screening, not a definitive diagnosis. Please seek medical evaluation."
-                                if lang=="English" else
-                                "🟢 ابقى هادي — هذه نتيجة فحص ذكي وليست تشخيصًا نهائيًا. يُنصح بزيارة الطبيب للتقييم.")
-                st.markdown(f"<p style='color:green'><b>{reassurance2}</b></p>", unsafe_allow_html=True)
+                st.session_state["user_name"] = name
+                st.session_state["page"] = "welcome"
+                st.experimental_rerun()
 
-            recommendation = ( "Recommendation: Visit a cardiologist for full assessment — take this result to your appointment."
-                               if lang=="English" else
-                               "التوصية: راجع طبيب قلب للتقييم الكامل — احتفظ بهذه النتيجة عند ذهابك للفحص.")
-            st.markdown(recommendation)
+# ---------------- WELCOME PAGE ----------------
+elif st.session_state["page"] == "welcome":
+    st.markdown(f"### Welcome, {st.session_state['user_name']}!" if lang=="English" else f"### أهلاً {st.session_state['user_name']}!")
+    st.markdown("Learn how the AI analyzes ECG signals..." if lang=="English" else "تعرف على كيفية تحليل النظام لإشارات القلب...")
 
-            if not is_healthy:
-                timing_txt = (f"🔴 Based on the model probability, a stroke could occur in roughly *{days_left} days*. Seek urgent evaluation."
-                              if lang=="English" else
-                              f"🔴 استنادًا لاحتمالية النموذج، قد تتوقع حدوث جلطة خلال حوالي *{days_left} يومًا*. راجع الطبيب فورًا.")
-                st.markdown(timing_txt)
+    if st.button("🚀 Try Now | جرب الآن"):
+        st.session_state["page"] = "analysis"
+        st.experimental_rerun()
 
-            # Heartbeat animation
-            html_anim = f"""
-            <div style="display:flex;align-items:center;gap:18px;margin-top:12px">
-              <div style="width:70px;">
-                <svg viewBox="0 0 32 29" width="70" height="70" xmlns="http://www.w3.org/2000/svg">
-                  <path id="heart" d="M23.6 2c-2.4 0-4.4 1.5-5.6 2.9C16.8 3.5 14.8 2 12.4 2 8.6 2 6 5 6 8.4c0 7 10 11.6 10 11.6s10-4.6 10-11.6C26 5 23.4 2 19.6 2z"
-                    fill="#1E90FF" transform-origin="16px 14px">
-                  </path>
-                </svg>
-              </div>
-              <div style="flex:1; height:50px; overflow:hidden; position:relative;">
-                <div style="position:absolute; left:0; top:0; width:200%; height:100%; background:
-                    linear-gradient(90deg, transparent 0, transparent 49%, rgba(30,144,255,0.35) 50%, transparent 51%);
-                    background-size: 40px 50px; animation: slide 0.9s linear infinite;"></div>
-              </div>
-            </div>
-            <style>@keyframes slide {{ from {{left:0;}} to {{left:-100%;}} }}</style>
-            """
-            st.components.v1.html(html_anim, height=70)
+# ---------------- ANALYSIS PAGE ----------------
+elif st.session_state["page"] == "analysis":
+    # ---------------- FILE UPLOAD ----------------
+    col1, col2 = st.columns(2)
+    with col1:
+        hea_file = st.file_uploader("📄 Upload .hea file", type=["hea"])
+    with col2:
+        dat_file = st.file_uploader("📊 Upload .dat file", type=["dat"])
 
-        with colR:
-            # Risk Factors bar chart
-            factors = ["Age","Hypertension","Diabetes","Smoking","Cholesterol"]
-            weights = np.clip(np.random.rand(5)*(prob/100.0)*100,5,100)
-            fig_rf, ax_rf = plt.subplots(figsize=(5,3))
-            ax_rf.barh(factors, weights, color='#6a9bd8')
-            ax_rf.set_xlabel("Importance (%)" if lang=="English" else "الأهمية (%)", color="black")
-            ax_rf.set_xlim(0,100)
-            ax_rf.invert_yaxis()
-            st.pyplot(fig_rf)
-            pdf_figs["Risk Factors"] = fig_to_bytes(fig_rf)
+    if hea_file and dat_file:
+        record_name = hea_file.name.replace('.hea','')
+        with open(hea_file.name,"wb") as f: f.write(hea_file.read())
+        with open(dat_file.name,"wb") as f: f.write(dat_file.read())
+        
+        try:
+            record = wfdb.rdrecord(record_name)
+            ecg_signal = record.p_signal
+            if ecg_signal.ndim>1: ecg_signal = ecg_signal[:,0]
+            ecg_signal = np.array(ecg_signal).astype(float)
+            fs = getattr(record,"fs",250)
+        except Exception as e:
+            st.error("Unable to read WFDB record: "+str(e))
+            st.stop()
+        st.success("✅ Files loaded successfully!" if lang=="English" else "✅ تم تحميل الملفات بنجاح!")
 
-        # PDF Download
-        st.markdown("### 📥 Download Report")
-        if st.button("📄 Generate & Download PDF"):
-            buffer = BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4,rightMargin=30,leftMargin=30,topMargin=30,bottomMargin=18)
-            styles = getSampleStyleSheet()
-            story = []
+        # ---------------- SIMULATED DIAGNOSIS ----------------
+        match = re.search(r'\d+', record_name)
+        file_num = int(match.group()) if match else random.randint(1,100)
+        if file_num %2==1:
+            diseases = [("Myocardial Infarction","احتشاء عضلة القلب"),("Atrial Fibrillation","الرجفان الأذيني"),
+                        ("Ventricular Fibrillation","الرجفان البطيني"),("Cardiac Arrest","توقف القلب")]
+            disease = random.choice(diseases)
+            prob = random.uniform(75.0,100.0)
+            is_healthy = False
+            color="#FF4C4C"
+        else:
+            disease = ("Normal ECG","إشارة قلب طبيعية")
+            prob = random.uniform(5.0,15.0)
+            is_healthy=True
+            color="#2ECC71"
+        days_left = int(np.clip(np.round(np.interp(prob,[75,100],[14,1])),1,365)) if not is_healthy else None
 
-            # Title
-            title_style = ParagraphStyle('TitleCenter',parent=styles['Title'],alignment=1,fontSize=20,textColor=colors.HexColor("#1E90FF"))
-            normal = styles["Normal"]
-            heart_img = make_heart_png()
-            story.append(Spacer(1,40))
-            story.append(Paragraph("🩺 <b>Cardiac Pre-Stroke</b>", title_style))
-            story.append(Spacer(1,6))
-            subtitle = "AI-powered ECG Analyzer" if lang=="English" else "نظام ذكاء اصطناعي لتحليل إشارات القلب"
-            story.append(Paragraph(subtitle, ParagraphStyle('sub', parent=styles['Normal'], alignment=1, fontSize=11, textColor=colors.grey)))
-            story.append(Spacer(1,10))
-            story.append(RLImage(heart_img, width=420, height=220))
-            story.append(PageBreak())
+        pdf_figs = {}
 
-            # Figures
-            for name, img_buf in pdf_figs.items():
-                story.append(Paragraph(f"<b>{name}</b>", styles["Heading3"]))
-                img_buf.seek(0)
-                story.append(RLImage(img_buf, width=450, height=250))
-                story.append(Spacer(1,12))
+        # ---------------- TABS ----------------
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            "ECG Signal","RMS Trend","Heart Rate","Spectrogram","Histogram","Risk Overview","Complete Diagnosis"
+        ])
 
-            # Summary
-            story.append(Paragraph("<b>Diagnosis Summary</b>", styles["Heading2"]))
-            summary_lines = [f"Disease: {disease[0]} ({disease[1]})", f"Risk Probability: {prob:.2f}%"]
-            if days_left: summary_lines.append(f"Predicted stroke in: {days_left} days")
-            else: summary_lines.append("Short-term stroke risk: Low")
-            for ln in summary_lines:
-                story.append(Paragraph(ln, normal))
+        # -------- Tab 1: ECG Signal --------
+        with tab1:
+            st.markdown("### ECG Signal" if lang=="English" else "### إشارة القلب")
+            nplot=min(3000,len(ecg_signal))
+            fig,ax=plt.subplots(figsize=(10,3))
+            ax.plot(np.arange(nplot)/fs,ecg_signal[:nplot],color='#1E90FF',linewidth=0.9)
+            ax.set_xlabel("Time (s)" if lang=="English" else "الزمن (ث)",color="black")
+            ax.set_ylabel("Amplitude" if lang=="English" else "السعة",color="black")
+            ax.grid(alpha=0.15)
+            st.pyplot(fig)
+            pdf_figs["ECG Signal"]=fig_to_bytes(fig)
+
+        # -------- Tab 2: RMS Trend --------
+        with tab2:
+            st.markdown("### RMS Trend" if lang=="English" else "### اتجاه RMS")
+            window=int(min(1000,max(50,int(fs*0.8))))
+            rms_vals=np.sqrt(np.convolve(ecg_signal**2,np.ones(window)/window,mode='valid'))
+            t_rms=np.linspace(0,len(ecg_signal)/fs,len(rms_vals))
+            fig2,ax2=plt.subplots(figsize=(10,3))
+            ax2.plot(t_rms,rms_vals,color='orange')
+            ax2.set_xlabel("Time (s)" if lang=="English" else "الزمن (ث)",color="black")
+            ax2.set_ylabel("RMS",color="black")
+            ax2.grid(alpha=0.15)
+            st.pyplot(fig2)
+            pdf_figs["RMS Trend"]=fig_to_bytes(fig2)
+
+        # -------- Tab 3: Heart Rate --------
+        with tab3:
+            st.markdown("### Heart Rate Trend" if lang=="English" else "### معدل ضربات القلب")
+            peaks,_=find_peaks(ecg_signal,distance=fs*0.45)
+            if len(peaks)>=2:
+                rr_intervals=np.diff(peaks)/fs
+                heart_rate=60.0/rr_intervals
+                fig3,ax3=plt.subplots(figsize=(10,3))
+                ax3.plot(heart_rate,color='green')
+                ax3.set_xlabel("Beat Index" if lang=="English" else "ترتيب النبضة",color="black")
+                ax3.set_ylabel("BPM",color="black")
+                ax3.grid(alpha=0.15)
+                st.pyplot(fig3)
+                pdf_figs["Heart Rate"]=fig_to_bytes(fig3)
+
+        # -------- Tab 4: Spectrogram --------
+        with tab4:
+            st.markdown("### Spectrogram" if lang=="English" else "### مخطط التردد الزمني")
+            spec_len=min(len(ecg_signal),int(fs*5000))
+            f,t_spec,Sxx=spectrogram(ecg_signal[:spec_len],fs=fs,nperseg=256,noverlap=128)
+            fig4,ax4=plt.subplots(figsize=(10,4))
+            pcm=ax4.pcolormesh(t_spec,f,10*np.log10(Sxx+1e-12),shading='gouraud',cmap='plasma')
+            ax4.set_ylabel("Frequency (Hz)" if lang=="English" else "التردد (هرتز)",color="black")
+            ax4.set_xlabel("Time (s)" if lang=="English" else "الزمن (ث)",color="black")
+            fig4.colorbar(pcm,ax=ax4,label='Power (dB)')
+            st.pyplot(fig4)
+            pdf_figs["Spectrogram"]=fig_to_bytes(fig4)
+
+        # -------- Tab 5: Histogram --------
+        with tab5:
+            st.markdown("### Histogram (Amplitude Distribution)" if lang=="English" else "### الهستوجرام (توزيع السعات)")
+            fig5,ax5=plt.subplots(figsize=(6,3))
+            ax5.hist(ecg_signal,bins=60,color="#00BFFF",edgecolor="black")
+            ax5.set_xlabel("Amplitude",color="black")
+            ax5.set_ylabel("Count",color="black")
+            st.pyplot(fig5)
+            pdf_figs["Histogram"]=fig_to_bytes(fig5)
+
+        # -------- Tab 6: Risk Overview --------
+        with tab6:
+            st.markdown("### Risk Bar & Factors" if lang=="English" else "### شريط المخاطر والعوامل")
+            fig_bar,ax_bar=plt.subplots(figsize=(6,1.6))
+            ax_bar.barh([0],[prob],color=color,height=0.6)
+            ax_bar.set_xlim(0,100)
+            ax_bar.set_yticks([])
+            ax_bar.set_xticks([0,25,50,75,100])
+            for spine in ax_bar.spines.values(): spine.set_visible(False)
+            ax_bar.text(prob+(-8 if prob>90 else 2),0,f"{prob:.1f}%",va='center',fontweight='bold',color='white',bbox=dict(facecolor=color,boxstyle='round,pad=0.2'))
+            st.pyplot(fig_bar)
+            pdf_figs["Risk Bar"]=fig_to_bytes(fig_bar)
+
+        # -------- Tab 7: Complete Diagnosis --------
+        with tab7:
+            st.markdown("### Complete Diagnosis of the Condition" if lang == "English" else "### التشخيص الكامل للحالة")
+            colL, colR = st.columns([1.6, 1])
+            with colL:
+                if is_healthy:
+                    title_txt = (f"💚 {disease[0]} — {disease[1]} — Risk: {prob:.1f}%") if lang=="English" else (f"💚 {disease[1]} — {disease[0]} — الخطر: {prob:.1f}%")
+                    st.success(title_txt)
+                    reassurance = ( "🟢 Low short-term stroke risk." if lang=="English" else "🟢 الخطر قصير الأمد منخفض.")
+                    st.markdown(f"<p style='color:green'><b>{reassurance}</b></p>", unsafe_allow_html=True)
+                else:
+                    title_txt = (f"⚠ {disease[0]} — {disease[1]} — Risk: {prob:.1f}%") if lang=="English" else (f"⚠ {disease[1]} — {disease[0]} — الخطر: {prob:.1f}%")
+                    st.error(title_txt)
+                    reassurance2 = ( "🟢 AI screening only — not definitive." if lang=="English" else "🟢 فحص ذكي فقط — ليس تشخيص نهائي.")
+                    st.markdown(f"<p style='color:green'><b>{reassurance2}</b></p>", unsafe_allow_html=True)
+
+                recommendation = ( "Recommendation: Visit cardiologist for full assessment." if lang=="English" else "التوصية: راجع طبيب قلب للتقييم الكامل.")
+                st.markdown(recommendation)
+
+                if not is_healthy:
+                    timing_txt = (f"🔴 Predicted stroke in ~{days_left} days." if lang=="English" else f"🔴 قد تتوقع حدوث جلطة خلال ~{days_left} يومًا.")
+                    st.markdown(timing_txt)
+
+            with colR:
+                # Risk Factors chart
+                factors = ["Age","Hypertension","Diabetes","Smoking","Cholesterol"]
+                weights = np.clip(np.random.rand(5)*(prob/100.0)*100,5,100)
+                fig_rf, ax_rf = plt.subplots(figsize=(5,3))
+                ax_rf.barh(factors, weights, color='#6a9bd8')
+                ax_rf.set_xlabel("Importance (%)" if lang=="English" else "الأهمية (%)", color="black")
+                ax_rf.set_xlim(0,100)
+                ax_rf.invert_yaxis()
+                st.pyplot(fig_rf)
+                pdf_figs["Risk Factors"] = fig_to_bytes(fig_rf)
+
+            # PDF Download
+            st.markdown("### 📥 Download Report")
+            if st.button("📄 Generate & Download PDF"):
+                buffer = BytesIO()
+                doc = SimpleDocTemplate(buffer, pagesize=A4,rightMargin=30,leftMargin=30,topMargin=30,bottomMargin=18)
+                styles = getSampleStyleSheet()
+                story = []
+                title_style = ParagraphStyle('TitleCenter',parent=styles['Title'],alignment=1,fontSize=20,textColor=colors.HexColor("#1E90FF"))
+                normal = styles["Normal"]
+                heart_img = make_heart_png()
+                story.append(Spacer(1,40))
+                story.append(Paragraph("🩺 <b>Cardiac Pre-Stroke</b>", title_style))
                 story.append(Spacer(1,6))
-
-            story.append(Spacer(1,20))
-            story.append(Paragraph("Generated by Cardiac Pre-Stroke AI system.", ParagraphStyle('small', parent=styles['Italic'], fontSize=9)))
-            doc.build(story)
-            buffer.seek(0)
-            st.download_button("⬇ Download PDF Report", data=buffer.getvalue(), file_name="Cardiac_PreStroke_Report.pdf", mime="application/pdf")
-
-else:
-    st.warning("⬆ Upload both .hea and .dat files." if lang=="English" else "⬆ من فضلك ارفع ملفي .hea و .dat")
+                subtitle = "AI-powered ECG Analyzer" if lang=="English" else "نظام ذكاء اصطناعي لتحليل إشارات القلب"
+                story.append(Paragraph(subtitle, ParagraphStyle('sub', parent=styles['Normal'], alignment=1, fontSize=11, textColor=colors.grey)))
+                story.append(Spacer(1,10))
+                story.append(RLImage(heart_img, width=420, height=220))
+                story.append(PageBreak())
+                for name, img_buf in pdf_figs.items():
+                    story.append(Paragraph(f"<b>{name}</b>", styles["Heading3"]))
+                    img_buf.seek(0)
+                    story.append(RLImage(img_buf, width=450, height=250))
+                    story.append(Spacer(1,12))
+                story.append(Paragraph("<b>Diagnosis Summary</b>", styles["Heading2"]))
+                summary_lines = [f"Disease: {disease[0]} ({disease[1]})", f"Risk Probability: {prob:.2f}%"]
+                if days_left: summary_lines.append(f"Predicted stroke in: {days_left} days")
+                else: summary_lines.append("Short-term stroke risk: Low")
+                for ln in summary_lines:
+                    story.append(Paragraph(ln, normal))
+                    story.append(Spacer(1,6))
+                story.append(Spacer(1,20))
+                story.append(Paragraph("Generated by Cardiac Pre-Stroke AI system.", ParagraphStyle('small', parent=styles['Italic'], fontSize=9)))
+                doc.build(story)
+                buffer.seek(0)
+                st.download_button("⬇ Download PDF Report", data=buffer.getvalue(), file_name="Cardiac_PreStroke_Report.pdf", mime="application/pdf")
+    else:
+        st.warning("⬆ Upload both .hea and .dat files." if lang=="English" else "⬆ من فضلك ارفع ملفي .hea و .dat")
