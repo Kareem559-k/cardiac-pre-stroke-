@@ -1,6 +1,8 @@
 streamlit
-wfdb
-matplotlib
 numpy
-scikit-learn
+matplotlib
+scipy
+wfdb
 reportlab
+Pillow
+plotly
