@@ -1,4 +1,4 @@
-# app.py - Cardiac Pre-Stroke (Professional UI)
+# app.py - Cardiac Pre-Stroke (Professional UI) — Fixed rerun & polished
 import subprocess, sys
 subprocess.run([sys.executable, "-m", "pip", "install", "reportlab", "Pillow", "wfdb", "-q"])
 
@@ -68,10 +68,17 @@ def make_heart_png(width=600, height=300, fill_color="#f2f8ff"):
 with st.container():
     c1, c2 = st.columns([3,1])
     with c1:
-        st.markdown('<div class="header-card">\n  <h1 style="color:#0b63b7; margin:0;">🩺 Cardiac Pre-Stroke</h1>\n  <p style="margin:6px 0 0 0; color:#0b2b47;">AI-powered ECG Analyzer — نظام ذكي لتحليل إشارات القلب</p>\n</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="header-card">\n  <h1 style="color:#0b63b7; margin:0;">🩺 Cardiac Pre-Stroke</h1>\n'
+            '  <p style="margin:6px 0 0 0; color:#0b2b47;">AI-powered ECG Analyzer — نظام ذكي لتحليل إشارات القلب</p>\n'
+            '</div>',
+            unsafe_allow_html=True
+        )
     with c2:
         # language picker and small user greeting
-        lang_choice = st.selectbox('', ['English', 'عربي'], index=0 if st.session_state['lang']=='English' else 1, key='lang_select', help='Choose interface language')
+        lang_choice = st.selectbox('', ['English', 'عربي'],
+                                   index=0 if st.session_state['lang']=='English' else 1,
+                                   key='lang_select', help='Choose interface language')
         st.session_state['lang'] = lang_choice
         if st.session_state['user_name']:
             st.markdown(f"<div class='small-muted right-align'>👤 {st.session_state['user_name']}</div>", unsafe_allow_html=True)
@@ -118,10 +125,11 @@ if st.session_state["page"] == "login":
                 if name.strip()=='' or phone.strip()=='' or email.strip()=='' or password.strip()=='' :
                     st.error('Please fill all fields.' if lang=='English' else 'يرجى ملء جميع الحقول.')
                 else:
-                    st.success('Welcome, %s!'%name if lang=='English' else f'أهلاً {name}!')
+                    st.success(('Welcome, %s!'%name) if lang=='English' else f'أهلاً {name}!')
                     st.session_state['user_name'] = name
                     st.session_state['page'] = 'welcome'
-                    st.experimental_rerun()
+                    # safe rerun
+                    st.rerun()
 
     centered_card('Get started' if lang=='English' else 'البدء', login_ui)
 
@@ -134,16 +142,16 @@ elif st.session_state["page"] == "welcome":
         with c1:
             if st.button('🚀 Try Now | جرب الآن'):
                 st.session_state['page'] = 'analysis'
-                st.experimental_rerun()
+                st.rerun()
         with c2:
             if st.button('📄 View Samples' if lang=='English' else 'عرض عينات'):
                 st.session_state['page'] = 'samples'
-                st.experimental_rerun()
+                st.rerun()
         with c3:
             if st.button('🔒 Logout' if lang=='English' else 'تسجيل خروج'):
                 st.session_state['user_name']=''
                 st.session_state['page']='login'
-                st.experimental_rerun()
+                st.rerun()
 
     centered_card('Welcome' if lang=='English' else 'أهلاً', welcome_ui)
 
@@ -154,7 +162,7 @@ elif st.session_state["page"] == 'samples':
         st.info('Drop .hea and .dat files on the Analysis page to try the tool.' if lang=='English' else 'قم برفع ملفي .hea و .dat في صفحة التحليل لتجربة الأداة.')
         if st.button('Back'):
             st.session_state['page']='welcome'
-            st.experimental_rerun()
+            st.rerun()
     centered_card('Samples', samples_ui)
 
 # ---------------- ANALYSIS PAGE ----------------
@@ -363,7 +371,7 @@ elif st.session_state["page"] == "analysis":
             st.markdown('---')
             if st.button('Back to Home' if lang=='English' else 'العودة للصفحة الرئيسية'):
                 st.session_state['page']='welcome'
-                st.experimental_rerun()
+                st.rerun()
 
     centered_card('Analysis' if lang=='English' else 'التحليل', analysis_ui)
 
@@ -371,7 +379,7 @@ elif st.session_state["page"] == "analysis":
 else:
     st.write('Unknown page, returning to login...')
     st.session_state['page']='login'
-    st.experimental_rerun()
+    st.rerun()
 
 # ---------------- Footer ----------------
 st.markdown('\n---\n<div class="small-muted center">\nBuilt with ❤️ — Cardiac Pre-Stroke • For educational/demo use only.\n</div>', unsafe_allow_html=True)
