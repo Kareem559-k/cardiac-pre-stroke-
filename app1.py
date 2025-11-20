@@ -41,6 +41,11 @@ body {background-color: #f4f7fb; color: #0b2b47}
   background-color:#0b63b7; color:white; padding:10px 14px; border-radius:8px; border:none;
 }
 .kv {font-weight:600; color:#0b2b47}
+
+/* Model capabilities small card style */
+.model-card {background:#ffffff; border-radius:10px; padding:12px; box-shadow: 0 4px 12px rgba(11,43,71,0.06); margin-bottom:10px; border-left:6px solid #0b63b7;}
+.model-card .title {font-weight:700; color:#0b2b47; margin-bottom:6px;}
+.model-card .desc {color:#475569; font-size:13px; line-height:1.4}
 </style>
 """, unsafe_allow_html=True)
 
@@ -99,6 +104,35 @@ def build_pdf_bytes(user_name, patient, pdf_figs, disease, prob, days_left, roc_
     story.append(Paragraph(f"Age: {patient.get('age','')}", normal))
     story.append(Paragraph(f"Gender: {patient.get('gender','')}", normal))
     story.append(Spacer(1,12))
+
+    # --- ADDED: PDF model capabilities section ---
+    story.append(Paragraph("<b>Model Capabilities / قدرات الموديل</b>", styles["Heading3"]))
+    story.append(Paragraph("<b>1) ECG Classification</b>", normal))
+    story.append(Paragraph("The model classifies ECG signals into 8 diagnostic categories including normal rhythm, minor disturbances, electrical weakness, early signs of cardiac problems, arrhythmias, and other critical conditions. (Multi-class model, not binary).", normal))
+    story.append(Spacer(1,6))
+    story.append(Paragraph("<b>2) Anomaly Detection</b>", normal))
+    story.append(Paragraph("Detects abnormal patterns like spikes, sudden drops/rises, excessive noise, abnormal P/T waves, and irregular rhythms — enabling early alerts.", normal))
+    story.append(Spacer(1,6))
+    story.append(Paragraph("<b>3) Feature Engineering</b>", normal))
+    story.append(Paragraph("Automatically extracts statistical and signal features such as mean, std, RMS, min/max, range, skewness, and kurtosis to improve decision accuracy.", normal))
+    story.append(Spacer(1,6))
+    story.append(Paragraph("<b>4) Pre-Stroke Risk Prediction</b>", normal))
+    story.append(Paragraph("Predicts short-term stroke risk categories (Low / Moderate / High) based on ECG markers (e.g., ST elevation, T-wave abnormalities). Useful for early intervention planning.", normal))
+    story.append(Spacer(1,12))
+    # Arabic translation block
+    story.append(Paragraph("<b>١) تصنيف إشارات القلب</b>", normal))
+    story.append(Paragraph("الموديل يصنف إشارات ECG إلى ٨ فئات تشخيصية تشمل النبض الطبيعي، اضطرابات بسيطة، ضعف كهربائي، علامات مبكرة لمشاكل قلبية، عدم انتظام النبض، وحالات خطرة أخرى. (موديل متعدد الفئات وليس ثنائي).", normal))
+    story.append(Spacer(1,6))
+    story.append(Paragraph("<b>٢) اكتشاف الأنماط الشاذة</b>", normal))
+    story.append(Paragraph("يكتشف الأنماط الغير طبيعية مثل القفزات، الانخفاض/الارتفاع المفاجئ، الضوضاء الشديدة، موجات P/T غير طبيعية، وعدم انتظام الإيقاع — لإعطاء إنذارات مبكرة.", normal))
+    story.append(Spacer(1,6))
+    story.append(Paragraph("<b>٣) استخراج ميزات طبية</b>", normal))
+    story.append(Paragraph("يستخرج تلقائياً خصائص إحصائية وإشارية مثل المتوسط، الانحراف المعياري، RMS، القيم القصوى/الدنيا، المدى، الانحراف، والالتواء لتحسين دقة القرار.", normal))
+    story.append(Spacer(1,6))
+    story.append(Paragraph("<b>٤) توقع خطر الجلطة</b>", normal))
+    story.append(Paragraph("يصنف خطر الجلطة قصير الأمد إلى: منخفض / متوسط / عالي اعتماداً على علامات ECG مثل ST elevation أو T-wave abnormalities، مما يساعد التخطيط للتدخل المبكر.", normal))
+    story.append(PageBreak())
+    # --- END ADDED: PDF model capabilities section ---
 
     # Figures
     for title, imgbuf in pdf_figs.items():
@@ -282,8 +316,8 @@ elif st.session_state["page"] == "analysis":
 
                 pdf_figs = {}
 
-                # Tabs for visuals
-                tabs = st.tabs(['ECG Signal','RMS Trend','Heart Rate','Spectrogram','Histogram','Risk Overview','Complete Diagnosis'])
+                # Tabs for visuals (original tabs preserved) + ADDED Model Capabilities at end
+                tabs = st.tabs(['ECG Signal','RMS Trend','Heart Rate','Spectrogram','Histogram','Risk Overview','Complete Diagnosis','Model Capabilities | قدرات الموديل'])
 
                 # ECG Signal
                 with tabs[0]:
@@ -399,6 +433,22 @@ elif st.session_state["page"] == "analysis":
                         else:
                             pdf_bytes = build_pdf_bytes(st.session_state['user_name'], st.session_state['patient'], pdf_figs, disease, prob, days_left)
                             st.download_button('⬇ Download PDF Report' if lang=='English' else '⬇ تحميل التقرير', data=pdf_bytes.getvalue(), file_name=f"Cardiac_Report_{st.session_state['patient'].get('name','patient')}.pdf", mime='application/pdf')
+
+                # --- ADDED: Model Capabilities Tab content (index 7) ---
+                with tabs[7]:
+                    st.subheader('Model Capabilities' if lang=='English' else 'قدرات الموديل')
+                    st.markdown("<div style='display:flex; gap:14px; flex-wrap:wrap;'>", unsafe_allow_html=True)
+                    # Card 1 - ECG Classification
+                    st.markdown("<div class='model-card' style='border-left-color:#0b63b7'><div class='title'>1) ECG Classification — تصنيف إشارات القلب</div><div class='desc'>The model classifies ECG signals into 8 diagnostic categories (not binary).<br>الموديل يصنف الإشارات إلى ٨ فئات تشخيصية وليس ثنائي.</div></div>", unsafe_allow_html=True)
+                    # Card 2 - Anomaly Detection
+                    st.markdown("<div class='model-card' style='border-left-color:#ff7a59'><div class='title'>2) Anomaly Detection — اكتشاف الأنماط الشاذة</div><div class='desc'>Detects spikes, sudden drops/rises, noise, abnormal P/T waves and irregular rhythms — enabling early alerts.<br>يكتشف القفزات، الانخفاض/الارتفاع المفاجئ، الضوضاء وموجات P/T غير الطبيعية لإعطاء إنذار مبكر.</div></div>", unsafe_allow_html=True)
+                    # Card 3 - Feature Engineering
+                    st.markdown("<div class='model-card' style='border-left-color:#f29f05'><div class='title'>3) Feature Engineering — استخراج الميزات</div><div class='desc'>Automatically extracts mean, std, RMS, min/max, range, skewness, kurtosis and more to improve accuracy.<br>يستخرج المتوسط، الانحراف، RMS، القيم القصوى/الدنيا، المدى، الانحراف والالتواء لتحسين الدقة.</div></div>", unsafe_allow_html=True)
+                    # Card 4 - Pre-Stroke Risk
+                    st.markdown("<div class='model-card' style='border-left-color:#16a34a'><div class='title'>4) Pre-Stroke Risk Prediction — توقع خطر الجلطة</div><div class='desc'>Classifies short-term stroke risk as Low / Moderate / High based on ECG markers (e.g., ST elevation, T-wave changes).<br>يصنف الخطر إلى منخفض / متوسط / عالي اعتماداً على علامات ECG.</div></div>", unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='margin-top:10px; color:#475569;'>🔥 <b>Summary:</b> This is a diagnostic ECG system (Classification + Anomaly Detection + Feature Analysis + Pre-Stroke Risk).</div>" if lang=='English' else "<div style='margin-top:10px; color:#475569;'>🔥 <b>الخلاصة:</b> نظام تشخيصي كامل لإشارات ECG (تصنيف، اكتشاف شذوذ، تحليل ميزات وتوقع خطر الجلطة).</div>", unsafe_allow_html=True)
+                # --- END ADDED: Model Capabilities Tab content ---
 
             else:
                 st.warning('Please upload both .hea and .dat files.' if lang=='English' else 'من فضلك ارفع ملفي .hea و .dat')
