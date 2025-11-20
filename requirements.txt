@@ -1,8 +1,8 @@
 streamlit
 numpy
 matplotlib
-scipy
 wfdb
+scipy
+scikit-learn
 reportlab
-Pillow
-plotly
+pillow
