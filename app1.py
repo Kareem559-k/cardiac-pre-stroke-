@@ -1,4 +1,4 @@
-# app.py - Cardiac Pre-Stroke (Professional, Animated UI)
+# app.py - Cardiac Pre-Stroke (Professional UI, Corrected)
 
 import subprocess, sys
 subprocess.run([sys.executable, "-m", "pip", "install", "reportlab", "Pillow", "wfdb", "-q"])
@@ -167,61 +167,6 @@ def centered_card(title, fn):
 st.markdown(f"<div class='card'><h3 style='margin-top:0'>{title}</h3>", unsafe_allow_html=True)
 fn()
 st.markdown("</div>", unsafe_allow_html=True)
-
-# ---------------- LOGIN PAGE ----------------
-
-if st.session_state["page"] == "login":
-def login_ui():
-st.markdown("<div style='display:flex; gap:12px; align-items:center;'>"
-"<div style='flex:1'>"
-f"<h4 style='margin:0'>{'Login / Register' if lang=='English' else 'تسجيل الدخول / إنشاء حساب'}</h4>"
-f"<div class='small-muted' style='margin-top:6px'>{'Create an account to save reports & access advanced features' if lang=='English' else 'سجل حساب لحفظ التقارير والوصول للميزات المتقدمة'}</div>"
-"</div></div>", unsafe_allow_html=True)
-with st.form('login_form', clear_on_submit=False):
-col_a, col_b = st.columns([2,1])
-with col_a:
-name = st.text_input('Full Name' if lang=='English' else 'الاسم الكامل')
-phone = st.text_input('Phone Number' if lang=='English' else 'رقم الهاتف')
-email = st.text_input('Email' if lang=='English' else 'البريد الإلكتروني')
-with col_b:
-password = st.text_input('Password' if lang=='English' else 'كلمة السر', type='password')
-st.caption('We only store local session data.' if lang=='English' else 'نخزن البيانات محلياً في الجلسة فقط.')
-
-```
-        submitted = st.form_submit_button('Register / Continue' if lang=='English' else 'تسجيل / متابعة')
-        if submitted:
-            if name.strip()=='' or phone.strip()=='' or email.strip()=='' or password.strip()=='':
-                st.error('Please fill all fields.' if lang=='English' else 'يرجى ملء جميع الحقول.')
-            else:
-                st.success(('Welcome, %s!'%name) if lang=='English' else f'أهلاً {name}!')
-                st.session_state['user_name'] = name
-                st.session_state['page'] = 'welcome'
-                st.rerun()
-centered_card('Get started' if lang=='English' else 'البدء', login_ui)
-```
-
-# ---------------- WELCOME PAGE ----------------
-
-elif st.session_state["page"] == "welcome":
-def welcome_ui():
-st.markdown(f"### {'Welcome' if lang=='English' else 'مرحباً'}, {st.session_state['user_name']}!")
-st.markdown(("Use the menu to upload ECG files and generate professional reports." if lang=='English' else "استخدم القائمة لرفع ملفات ECG وإنشاء تقارير احترافية."))
-c1,c2,c3 = st.columns(3)
-with c1:
-if st.button('🚀 Try Now | جرب الآن'):
-st.session_state['patient'] = {"name": "", "age": None, "gender": ""}
-st.session_state['page'] = 'analysis'
-st.rerun()
-with c2:
-if st.button('📄 View Samples' if lang=='English' else 'عرض عينات'):
-st.session_state['page'] = 'samples'
-st.rerun()
-with c3:
-if st.button('🔒 Logout' if lang=='English' else 'تسجيل خروج'):
-st.session_state['user_name'] = ""
-st.session_state['page'] = 'login'
-st.rerun()
-centered_card('Welcome' if lang=='English' else 'أهلاً', welcome_ui)
 
 # ---------------- Footer ----------------
 
